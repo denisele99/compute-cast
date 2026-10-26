@@ -14,6 +14,13 @@ def estimate_runtime(steps: int, seconds_per_batch: float) -> float:
         raise ValueError("Steps and benchmark time must be positive and finite")
     return steps * seconds_per_batch / 3600
 
+def estimate_memory(): #TODO
+    return 0
+
+#Estimate runtime given hardware class + model params + training params
+
+
+
 
 """Capacity check only. Replace with a calibrated memory estimator later."""
 
