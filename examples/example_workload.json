@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "torch_version": "2.14.1+cpu",
+  "model": {
+    "class": "Sequential",
+    "total_params": 6529,
+    "trainable_params": 6529,
+    "architecture": {},
+    "module_types": {
+      "Sequential": 1,
+      "Linear": 2,
+      "ReLU": 1
+    },
+    "provided_config": {
+      "input_size": 100,
+      "hidden_size": 64,
+      "output_size": 1
+    },
+    "logical_weight_bytes": 26116,
+    "logical_buffer_bytes": 0
+  },
+  "tensor_inventory": {
+    "weights": [
+      {
+        "name": "0.weight",
+        "shape": [
+          64,
+          100
+        ],
+        "numel": 6400,
+        "dtype": "torch.float32",
+        "device": "meta",
+        "layout": "torch.strided",
+        "logical_dense_bytes": 25600,
+        "storage_bytes": null
+      },
+      {
+        "name": "0.bias",
+        "shape": [
+          64
+        ],
+        "numel": 64,
+        "dtype": "torch.float32",
+        "device": "meta",
+        "layout": "torch.strided",
+        "logical_dense_bytes": 256,
+        "storage_bytes": null
+      },
+      {
+        "name": "2.weight",
+        "shape": [
+          1,
+          64
+        ],
+        "numel": 64,
+        "dtype": "torch.float32",
+        "device": "meta",
+        "layout": "torch.strided",
+        "logical_dense_bytes": 256,
+        "storage_bytes": null
+      },
+      {
+        "name": "2.bias",
+        "shape": [
+          1
+        ],
+        "numel": 1,
+        "dtype": "torch.float32",
+        "device": "meta",
+        "layout": "torch.strided",
+        "logical_dense_bytes": 4,
+        "storage_bytes": null
+      }
+    ],
+    "buffers": [],
+    "gradients": [],
+    "optimizer_states": [],
+    "explicit_master_weights": []
+  },
+  "observed_storage": {
+    "bytes_by_device": {},
+    "unsupported_or_meta_tensors": 4
+  },
+  "dense_gradient_estimate_bytes": 26116,
+  "gradient_estimate_assumption": "All trainable parameters receive dense fp32 gradients; explicit training configuration, not observed gradients.",
+  "optimizer": {
+    "class": null,
+    "parameter_groups": [],
+    "observed_state_tensor_count": 0,
+    "future_state_memory_bytes": null
+  },
+  "training": {
+    "task": "regression",
+    "num_examples": 100000,
+    "epochs": 10,
+    "batch_size_per_gpu": 16,
+    "gradient_accumulation_steps": 1,
+    "drop_last": false,
+    "precision": "fp32",
+    "gradient_dtype": "fp32",
+    "optimizer": "AdamW",
+    "optimizer_state_dtype": "fp32",
+    "optimizer_options": {
+      "amsgrad": false,
+      "foreach": false
+    },
+    "master_weights": "none",
+    "gradient_checkpointing": false,
+    "gpu_count": 1,
+    "distributed_strategy": "single",
+    "attention_backend": "not_applicable",
+    "input_specs": [
+      {
+        "name": "features",
+        "shape": [
+          16,
+          100
+        ],
+        "dtype": "float32"
+      },
+      {
+        "name": "targets",
+        "shape": [
+          16,
+          1
+        ],
+        "dtype": "float32"
+      }
+    ]
+  },
+  "input_specs": [
+    {
+      "name": "features",
+      "shape": [
+        16,
+        100
+      ],
+      "dtype": "float32"
+    },
+    {
+      "name": "targets",
+      "shape": [
+        16,
+        1
+      ],
+      "dtype": "float32"
+    }
+  ],
+  "target_hardware": null,
+  "script_scan": {
+    "candidates": [
+      {
+        "name": "batch_size",
+        "line": 2,
+        "literal": true,
+        "value": 16,
+        "expression": "16"
+      },
+      {
+        "name": "epochs",
+        "line": 3,
+        "literal": true,
+        "value": 10,
+        "expression": "10"
+      }
+    ],
+    "limitations": "Candidates may be unused, overridden, or in inactive branches. External configs, CLI overrides and dynamic values need explicit input."
+  },
+  "missing_training_fields": [],
+  "still_required": [
+    "Input shapes/sequence lengths, padding/packing policy and task/loss.",
+    "Optimizer-specific future state shapes/dtypes if not initialized.",
+    "Explicit master-copy policy; not reliably discoverable across frameworks.",
+    "Activation/workspace estimator matching architecture and kernels.",
+    "Target GPU capacity, precision-specific compute and bandwidth.",
+    "Runtime model: operation counts, utilization assumptions, data loading, evaluation/checkpoint overhead and distributed communication."
+  ],
+  "limitations": [
+    "Collection runs no training or benchmark; observed memory is not peak memory.",
+    "Before backward/step, missing gradients and optimizer states are not zero-cost.",
+    "Observed storage is current-device storage, not target GPU memory.",
+    "Meta tensors have logical sizes but no allocated storage.",
+    "Quantization metadata, sparse storage, offload and distributed sharding require specialized handling; logical sizes are not sufficient.",
+    "Parameter counts deduplicate shared Parameter objects, but distinct Parameter views can still overlap storage.",
+    "Optimizer-exposed master tensors may already appear in optimizer_states; global observed storage is deduplicated.",
+    "No runtime or peak-memory prediction is invented for unsupported setups."
+  ],
+  "collection_mode": "meta_initialization",
+  "configured_optimizer": {
+    "name": "AdamW",
+    "state_dtype": "fp32",
+    "options": {
+      "amsgrad": false,
+      "foreach": false
+    },
+    "master_weights": "none",
+    "note": "User configuration only. Future optimizer tensors are not initialized."
+  },
+  "provenance": {
+    "model_script": "/tmp/workload-example-inputs/model.py",
+    "training_script": "/tmp/workload-example-inputs/train.py",
+    "model_config": "/tmp/workload-example-inputs/model_config.json",
+    "training_config": "/tmp/workload-example-inputs/training_config.json",
+    "hardware_config": null,
+    "factory": "build_model",
+    "parameter_dtype_override": "fp32",
+    "settings_policy": "Only explicit training config is confirmed. AST candidates are not automatically promoted to settings."
+  }
+}

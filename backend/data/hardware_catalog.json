@@ -1,0 +1,57 @@
+
+{
+  "schema_version": 1,
+  "gpus": {
+    "nvidia_geforce_rtx_4090": {
+      "name": "NVIDIA GeForce RTX 4090",
+      "manufacturer": "NVIDIA",
+      "architecture": "Ada Lovelace",
+      "form_factor": "PCIe",
+
+      "memory": {
+        "advertised_capacity_gb": 24,
+        "type": "GDDR6X",
+        "bandwidth_gb_per_second": 1008
+      },
+
+      "peak_compute_tflops": {
+        "fp32": 82.6,
+        "fp16_tensor_dense": null,
+        "bf16_tensor_dense": null,
+        "tf32_tensor_dense": null
+      },
+
+      "source": {
+        "url": "https://images.nvidia.com/aem-dam/Solutions/geforce/ada/nvidia-ada-gpu-architecture.pdf",
+        "section": "Appendix A",
+        "last_verified": "2026-10-27"
+      }
+    },
+
+    "nvidia_a100_80gb_pcie": {
+      "name": "NVIDIA A100 80GB PCIe",
+      "manufacturer": "NVIDIA",
+      "architecture": "Ampere",
+      "form_factor": "PCIe",
+
+      "memory": {
+        "advertised_capacity_gb": 80,
+        "type": "HBM2e",
+        "bandwidth_gb_per_second": 1935
+      },
+
+      "peak_compute_tflops": {
+        "fp32": 19.5,
+        "fp16_tensor_dense": 312,
+        "bf16_tensor_dense": 312,
+        "tf32_tensor_dense": 156
+      },
+
+      "source": {
+        "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf",
+        "section": "Specifications",
+        "last_verified": "2026-10-27"
+      }
+    }
+  }
+}

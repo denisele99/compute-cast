@@ -2,6 +2,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+#Input schemas for the API endpoints
+class Dataset(BaseModel):
+    '''Schema for a sample dataset used in training (post-extraction).'''
+    name: str = Field(min_length=1, max_length=100)
+    size_gb: float = Field(default=10, ge=0, le=10**6, allow_inf_nan=False)
+    num_samples: int = Field(default=100000, ge=1, le=10**12)
+    sequence_length: int = Field(default=512, ge=1, le=10**7)
 
 
 class Workload(BaseModel):
@@ -15,8 +22,7 @@ class Workload(BaseModel):
     target_vram_gb: float = Field(default=24, gt=0, le=10000, allow_inf_nan=False)
 
 
-
-
+#Result schemas for the API endpoints
 
 class EstimateResponse(BaseModel):
     training_steps: int

@@ -1,4 +1,6 @@
 """Future Token Factory adapter. No API requests are made by this starter."""
+#Run benchmark on Nebius AI Cloud GPU compute
+#For authentication and token factory API calls
 
 
 def parse_workload(description: str) -> dict:

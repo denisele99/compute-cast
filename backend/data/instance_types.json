@@ -1,0 +1,14 @@
+
+{
+  "example_provider_single_gpu": {
+    "provider": "example_provider",
+    "gpu_id": "nvidia_a100_80gb_pcie",
+    "gpu_count": 1,
+    "vcpu_count": 16,
+    "cpu_ram_gib": 128,
+    "storage": {
+      "type": "local_nvme",
+      "capacity_gib": 500
+    }
+  }
+}

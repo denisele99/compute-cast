@@ -1,0 +1,18 @@
+{
+  "num_examples": 100000,
+  "epochs": 10,
+  "batch_size_per_gpu": 16,
+  "sequence_length": 512,
+  "gradient_accumulation_steps": 4,
+
+  "precision": "bf16",
+  "gradient_dtype": "fp32",
+  "optimizer": "AdamW",
+  "optimizer_state_dtype": "fp32",
+  "master_weights": "none",
+
+  "gradient_checkpointing": false,
+  "attention_backend": "eager",
+  "gpu_count": 1,
+  "distributed_strategy": "single"
+}

@@ -1,5 +1,105 @@
+from dataclasses import dataclass
+from pyexpat import model
+from typing import Iterable
+
 from ..schemas import Workload
 from math import ceil, isfinite
+
+class model:
+    
+    pass
+class training:
+    pass
+
+DTYPE_BYTES = { #TODO check this is correct for PyTorch and TensorFlow
+    "fp64": 8,
+    "fp32": 4,
+    "fp16": 2,
+    "bf16": 2,
+    "int64": 8,
+    "int32": 4,
+    "int8": 1,
+    "uint8": 1,
+}
+
+@dataclass(frozen=True)
+class TensorSpec:
+    name: str
+    numel: int
+    dtype: str
+
+    @property
+    def memory_bytes(self) -> int:
+        if self.numel < 0:
+            raise ValueError("numel must be nonnegative")
+        if self.dtype not in DTYPE_BYTES:
+            raise ValueError(f"Unsupported dtype: {self.dtype}")
+        return self.numel * DTYPE_BYTES[self.dtype]
+
+
+def estimate_model_state_memory(
+    *,
+    weights: Iterable[TensorSpec],
+    gradients: Iterable[TensorSpec],
+    optimizer_states: Iterable[TensorSpec],
+    master_weights: Iterable[TensorSpec] = (),
+) -> dict[str, float]:
+    """Resident GPU tensor storage; excludes temporary workspace."""
+    groups = {
+        "weights": weights,
+        "gradients": gradients,
+        "optimizer_states": optimizer_states,
+        "master_weights": master_weights,
+    }
+
+    sizes = {
+        name: sum(t.memory_bytes for t in tensors)
+        for name, tensors in groups.items()
+    }
+    sizes["total"] = sum(sizes.values())
+
+    return {
+        f"{name}_gib": size / 1024**3
+        for name, size in sizes.items()
+    }
+    
+
+#Calculate model-state memory
+def estimate_model_state_memory(model, training):
+    '''Estimate the number of model states (parameters) in memory during training
+M_states = M_weights + M_gradients  +M_optimizer_tensors+M_master_weights
+'''
+    n_params = model.num_parameters
+    
+    
+    return 0    
+
+def estimate_activations(model, training, attention_backend):
+    return 0
+
+def estimate_workspace(model, training, software):
+    #CUDA context, PyTorch caching allocator
+    return 0
+
+def estimate_training_peak(states, activations, workspace):
+    return (0, 0)
+
+def compare_with_capacity(peak_range, hardware):
+    return 0
+
+def estimate_gpu_peak_memory(model, training, attention_backend, software, hardware):
+    
+    states = estimate_model_states(model, training)
+    activations = estimate_activations(model, training, attention_backend)
+    workspace = estimate_workspace(model, training, software)
+
+    peak_range = estimate_training_peak(
+        states=states,
+        activations=activations,
+        workspace=workspace,
+    )
+
+    fit = compare_with_capacity(peak_range, hardware)
 
 
 def estimate_steps(examples: int, batch_size: int, epochs: int) -> int:
