@@ -1,6 +1,5 @@
-# GPU Planner Starter
+# GPU Planner
 
-Minimal React + Vite frontend and Python + FastAPI backend. No cloud account, GPU, API key, database or paid service is needed to run this starter.
 
 ## What works
 
@@ -84,24 +83,3 @@ Training batches = ceil(examples / batch_size) × epochs. Hours = batches × mea
 Time excludes provisioning/setup, validation, checkpoints and idle time. Cost excludes storage, transfers and taxes. EC2 bills instance uptime, including idle time. Update the estimator before claiming broader support.
 
 See backend/README.md for endpoint details and explicit AI/benchmark placeholders.
-
-## GitHub
-
-Create an EMPTY GitHub repository (without an initial README), then from this folder:
-
-```bash
-git init
-git add .
-git commit -m "Add GPU planner starter"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
-git push -u origin main
-```
-
-Keep secrets in backend environment variables, never frontend code or Git. This archive deliberately contains no .git history.
-
-## AI coding tools and deployment
-
-Ask your coding assistant to preserve the /api/estimate request/response contract while improving the React UI. Browser-based JS tools can edit/preview the frontend; they do not automatically run the Python backend. For a UI-only preview, use an explicitly labeled mock response until the API is available.
-
-For production, run npm run build in frontend and serve dist through your frontend host. The development proxy is NOT part of the built site. Configure your host/reverse proxy to forward /api to the deployed backend, or change the frontend API URL and configure restricted CORS on FastAPI. Deploy the backend separately and keep API keys server-side. npm run preview previews static assets only; it is not the complete deployment setup.
