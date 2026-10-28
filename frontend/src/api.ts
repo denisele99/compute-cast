@@ -31,7 +31,7 @@ export type GPUOption = {
 
 export type GPUCatalogResponse = { items: GPUOption[]; note: string };
 
-import { mockCatalog, mockEstimate } from './mocks';
+import { mockCatalog, mockEstimate, mockHardware, mockMemory } from './mocks';
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 const mockMode = String(import.meta.env.VITE_MOCK_MODE).toLowerCase() === 'true';
@@ -70,3 +70,17 @@ export { mockMode };
  * GET  /api/instances        — would expose instance_types.json (gpu_id, gpu_count, vcpu_count, cpu_ram_gib, storage).
  * POST /api/estimate         — would need gpu_count, precision, optimizer and model parameter count for a modeled VRAM estimate.
  */
+
+export type HardwareOption = { id: string; provider: 'catalog' | 'nebius'; label: string; vram_gib: number | null; memory_bandwidth_gb_s: number | null; hourly_price_usd: number | null; source_url: string | null; region: string | null };
+export type HardwareResponse = { items: HardwareOption[]; price_snapshot?: string | null; note: string };
+export type MemoryRequest = { workload: Record<string, unknown>; hardware?: { gpu: { vram_gib_per_gpu: number }; cpu?: { ram_gib: number }; storage?: { capacity_gib: number } }; assumptions?: Record<string, number>; deployment?: Record<string, unknown> };
+export type HostNeed = { required_ram_gib_per_node?: number | null; required_storage_gib_per_node?: number | null; available_gib_per_node: number | null; fits: boolean | null };
+export type MemoryResult = { status: string; gpu: { peak_vram_gib: number | null; total_vram_gib: number | null; usable_vram_gib: number | null; fits: boolean | null }; cpu?: HostNeed; nvme?: HostNeed; warnings: string[] };
+
+export async function fetchHardware(): Promise<HardwareResponse> {
+  return mockMode ? mockHardware : request<HardwareResponse>('/api/hardware');
+}
+/** Real: POST /api/estimate/memory (Python estimate_gpu_memory). Mock: labelled demo numbers. */
+export async function estimateMemory(body: MemoryRequest): Promise<MemoryResult> {
+  return mockMode ? mockMemory(body) : request<MemoryResult>('/api/estimate/memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}

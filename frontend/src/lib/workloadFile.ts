@@ -54,3 +54,13 @@ export function parseWorkloadJson(text: string): ParseResult {
   if (Object.keys(fields).length === 0) warnings.push('No usable training values were found; enter them manually.');
   return { ok: true, data: { fields, summary, warnings, missing } };
 }
+
+/** Keep the full collector JSON so the backend estimator receives tensor inventory and input specs. */
+export function parseCollector(text: string): Record<string, unknown> | null {
+  try { const raw = JSON.parse(text); return typeof raw === 'object' && raw !== null && !Array.isArray(raw) && typeof raw.model === 'object' ? raw : null; } catch { return null; }
+}
+export function buildWorkload(collector: Record<string, unknown>, s: import('./scenarios').Setup, gpuCount: number): Record<string, unknown> {
+  const training = { ...((collector.training as Record<string, unknown>) ?? {}), num_examples: s.num_examples, epochs: s.epochs, batch_size_per_gpu: s.batch_size_per_gpu,
+    gradient_accumulation_steps: s.gradient_accumulation_steps, precision: s.precision, optimizer: s.optimizer, gradient_checkpointing: s.gradient_checkpointing, gpu_count: gpuCount };
+  return { ...collector, training };
+}
