@@ -1,0 +1,29 @@
+{
+  "dataset": {
+    "num_train_examples": 100000,
+    "num_validation_examples": 0,
+    "train_on_disk_size_bytes": 40400000,
+    "location_type": "local_ssd"
+  },
+  "sample": {
+    "inputs": [
+      {
+        "name": "features",
+        "shape": [
+          100
+        ],
+        "dtype": "float32"
+      }
+    ],
+    "target": {
+      "name": "targets",
+      "shape": [
+        1
+      ],
+      "dtype": "float32"
+    }
+  },
+  "batching": {
+    "drop_last": false
+  }
+}

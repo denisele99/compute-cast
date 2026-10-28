@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+
+  "model": {
+    "class": "Sequential",
+    "total_params": 6529,
+    "trainable_params": 6529,
+    "parameter_dtype": "fp32",
+
+    "architecture": {
+      "type": "mlp",
+      "input_size": 100,
+      "hidden_sizes": [64],
+      "output_size": 1
+    }
+  },
+
+  "training": {
+    "task": "regression",
+    "num_examples": 100000,
+    "epochs": 10,
+    "batch_size_per_gpu": 16,
+    "gradient_accumulation_steps": 1,
+    "precision": "fp32",
+
+    "optimizer": {
+      "name": "AdamW",
+      "state_dtype": "fp32"
+    },
+
+    "gradient_checkpointing": false,
+    "distributed_strategy": "single"
+  },
+
+  "dataset": {
+    "input_specs": [
+      {
+        "name": "features",
+        "shape": [16, 100],
+        "dtype": "float32"
+      },
+      {
+        "name": "targets",
+        "shape": [16, 1],
+        "dtype": "float32"
+      }
+    ]
+  },
+
+  "hardware": {
+    "provider": "nebius",
+    "gpu_id": null,
+    "gpu_count": 1
+  }
+}

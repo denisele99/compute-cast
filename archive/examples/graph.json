@@ -1,0 +1,90 @@
+{
+  "scope": "per_rank",
+  "complete_training_step": true,
+  "excludes_model_states": true,
+  "workspace_complete": false,
+  "description": "Illustrative branch/alias lifetimes, not a graph extracted from example_workload. All byte/shape/lifetime values must be replaced for the real computation.",
+  "tensors": [
+    {
+      "id": "input",
+      "shape": [
+        16,
+        100
+      ],
+      "dtype": "float32",
+      "born": 0,
+      "last_use": 8,
+      "saved_for_backward": true
+    },
+    {
+      "id": "branch_a",
+      "shape": [
+        16,
+        64
+      ],
+      "dtype": "float32",
+      "born": 1,
+      "last_use": 7,
+      "saved_for_backward": true
+    },
+    {
+      "id": "branch_a_view",
+      "shape": [
+        16,
+        64
+      ],
+      "dtype": "float32",
+      "born": 2,
+      "last_use": 5,
+      "storage_id": "branch_a",
+      "storage_bytes": 4096
+    },
+    {
+      "id": "branch_b",
+      "shape": [
+        16,
+        64
+      ],
+      "dtype": "float32",
+      "born": 3,
+      "last_use": 6,
+      "saved_for_backward": true
+    },
+    {
+      "id": "output",
+      "shape": [
+        16,
+        1
+      ],
+      "dtype": "float32",
+      "born": 4,
+      "last_use": 6
+    },
+    {
+      "id": "targets",
+      "shape": [
+        16,
+        1
+      ],
+      "dtype": "float32",
+      "born": 0,
+      "last_use": 6
+    },
+    {
+      "id": "backward_scratch",
+      "shape": [
+        16,
+        64
+      ],
+      "dtype": "float32",
+      "born": 6,
+      "last_use": 6
+    }
+  ],
+  "workspaces": [
+    {
+      "step": 6,
+      "gpu_bytes": 1048576
+    }
+  ]
+}
