@@ -12,3 +12,7 @@ vitest.config.cjs.timestamp-*.mjs
 vitest.config.ts.timestamp-*.mjs
 vitest.config.mts.timestamp-*.mjs
 vitest.config.cts.timestamp-*.mjs
+__pycache__/
+*.py[cod]
+frontend/test-results/
+frontend/playwright-report/

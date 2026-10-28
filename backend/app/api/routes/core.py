@@ -1,7 +1,7 @@
 """HTTP entry points. Estimation logic lives in services/estimation.py."""
 from fastapi import APIRouter, HTTPException
 from ...schemas import Workload, EstimateResponse, GPUCatalogResponse, BenchmarkRequest, WorkloadDescription
-from ...services import estimate_workload
+from ...services.legacy_estimation import estimate_workload
 from ...clients.nebius import parse_workload
 
 router = APIRouter()
