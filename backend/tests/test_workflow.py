@@ -193,3 +193,21 @@ class WorkflowTests(unittest.TestCase):
             response = self.client.get('/api/recommendations/status')
             self.assertEqual(response.status_code, 200)
             self.assertNotIn('not-a-real-secret-for-status-test', response.text)
+
+    def test_toy_example_scripts_and_both_config_formats_autofill_consistently(self):
+        folder = Path(__file__).resolve().parents[2] / 'examples' / 'toy_mlp'
+        for extension in ('json', 'yaml'):
+            names = ['model.py', 'train.py', 'model_config.json', f'train_config.{extension}']
+            parsed = self.parse([{'name': name, 'content': (folder / name).read_text()} for name in names])
+            self.assertFalse(parsed['errors'])
+            self.assertEqual(parsed['values']['training']['examples'], 64)
+            self.assertEqual(parsed['values']['training']['batch_size'], 8)
+            self.assertEqual(parsed['values']['model']['total_params'], 6529)
+            self.assertNotIn('training.batch_size', parsed['uncertain'])
+            config = copy.deepcopy(self.config)
+            config['training'].update(parsed['values']['training'])
+            config['model'].update(parsed['values']['model'])
+            result = self.estimate(config)
+            self.assertEqual(result['training_steps'], 16)
+            self.assertEqual(result['optimizer_updates'], 16)
+            self.assertIsNone(result['training_hours'])

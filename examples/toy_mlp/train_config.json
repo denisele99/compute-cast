@@ -1,0 +1,17 @@
+{
+  "num_examples": 64,
+  "batch_size_per_gpu": 8,
+  "epochs": 2,
+  "gradient_accumulation_steps": 1,
+  "precision": "fp32",
+  "optimizer": "AdamW",
+  "gradient_dtype": "fp32",
+  "optimizer_state_dtype": "fp32",
+  "master_weights": "none",
+  "gradient_checkpointing": false,
+  "gpu_count": 1,
+  "distributed_strategy": "single",
+  "task": "regression",
+  "learning_rate": 0.01,
+  "seed": 7
+}

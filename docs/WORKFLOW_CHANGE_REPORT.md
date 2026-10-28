@@ -47,3 +47,15 @@ python -m unittest discover -s tests -v
 ```
 
 Run `npm ci` and `npm run build` in `frontend`. Start the backend and Vite as described in the root README, install a Playwright Chromium browser (`npx playwright install chromium`), then run `npm run test:e2e`. An existing Chromium binary may be selected with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. `PLANNER_BASE_URL` can target a locally running production preview for the same connected checks.
+
+## Added runnable example
+
+`examples/toy_mlp` adds model/training scripts, model JSON, equivalent training
+JSON/YAML, and example-specific tests. The synthetic 64-example FP32 AdamW run
+uses 6,529 parameters and completes 16 microbatches on CPU. Both upload config
+formats are covered by the API regression test. This exposed and fixed a parser
+validation error: unconstrained enum/bool annotations must be validated directly,
+without constructing an empty `Annotated` wrapper. No estimator formulas changed.
+Validation after this addition: 28 backend tests and 2 optional PyTorch example
+tests passed; the complete CPU training command also passed. CUDA benchmarking
+remains untested in this environment.

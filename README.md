@@ -104,3 +104,10 @@ for calculation changes, test evidence and outstanding work.
 The original `/api/estimate` and `/api/gpus` endpoints remain for compatibility,
 including their illustrative defaults. The current planner uses `/api/analysis/*`
 and `/api/hardware` instead.
+
+## Runnable test model
+
+[examples/toy_mlp](examples/toy_mlp/README.md) contains a 6,529-parameter PyTorch
+MLP, a CPU/CUDA training script with the local benchmark adapter, and equivalent
+JSON/YAML training configs. Run it with `python examples/toy_mlp/train.py --device cpu`
+after installing PyTorch. The example README lists the exact files to upload.

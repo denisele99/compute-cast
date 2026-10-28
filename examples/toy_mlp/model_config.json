@@ -1,0 +1,6 @@
+{
+  "input_size": 100,
+  "hidden_size": 64,
+  "output_size": 1,
+  "total_params": 6529
+}

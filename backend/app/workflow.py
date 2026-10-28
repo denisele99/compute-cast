@@ -220,7 +220,8 @@ def parse_uploads(request: ParseRequest):
         from pydantic import TypeAdapter, ValidationError
         from typing import Annotated
         try:
-            value = TypeAdapter(Annotated[field.annotation, *field.metadata]).validate_python(value)
+            annotation = Annotated[field.annotation, *field.metadata] if field.metadata else field.annotation
+            value = TypeAdapter(annotation).validate_python(value)
             if isinstance(value, float) and not math.isfinite(value):
                 raise ValueError("Value must be finite")
             values.setdefault(group, {})[key] = value
