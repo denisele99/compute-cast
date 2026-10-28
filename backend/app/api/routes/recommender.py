@@ -11,7 +11,7 @@ except ImportError:  # openai is optional until recommendations are used
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from ..services.recommender import recommend, safe_path
+from ...services.recommender import recommend, safe_path
 
 logger = logging.getLogger(__name__)
 
