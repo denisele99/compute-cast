@@ -31,20 +31,16 @@ export type GPUOption = {
 
 export type GPUCatalogResponse = { items: GPUOption[]; note: string };
 
+import { mockCatalog, mockEstimate, mockHardware, mockMemory } from './mocks';
+
 const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 const mockMode = String(import.meta.env.VITE_MOCK_MODE).toLowerCase() === 'true';
 
-const demoCatalog: GPUCatalogResponse = {
-  items: [
-    { id: 'demo-16gb', label: 'Illustrative GPU · 16 GB', vram_gb: 16, gpu_count: 1, hourly_price_usd: null, illustrative: true },
-    { id: 'demo-24gb', label: 'Illustrative GPU · 24 GB', vram_gb: 24, gpu_count: 1, hourly_price_usd: null, illustrative: true },
-    { id: 'demo-48gb', label: 'Illustrative GPU · 48 GB', vram_gb: 48, gpu_count: 1, hourly_price_usd: null, illustrative: true },
-  ],
-  note: 'Demo catalog. Capacity tiers are illustrative, not live cloud offerings.',
-};
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBase}${path}`, init);
+  let response: Response;
+  try { response = await fetch(`${apiBase}${path}`, init); } catch {
+    throw new Error('Could not reach the Python API. Start the backend on port 8000, set VITE_API_BASE_URL, or enable VITE_MOCK_MODE=true for labeled demo data.');
+  }
   let body: unknown;
   try { body = await response.json(); } catch { body = null; }
   if (!response.ok) {
@@ -56,24 +52,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function listGPUs(): Promise<GPUCatalogResponse> {
-  if (mockMode) return demoCatalog;
+  if (mockMode) return mockCatalog;
   return request<GPUCatalogResponse>('/api/gpus');
 }
 
 export async function requestEstimate(payload: WorkloadPayload): Promise<EstimateResponse> {
-  if (mockMode) {
-    const trainingSteps = Math.ceil(payload.examples / payload.batch_size) * payload.epochs;
-    const trainingHours = trainingSteps * payload.seconds_per_batch / 3600;
-    return {
-      training_steps: trainingSteps,
-      training_hours: Number(trainingHours.toFixed(3)),
-      gpu_hours: Number(trainingHours.toFixed(3)),
-      training_cost_usd: Number((trainingHours * payload.hourly_price_usd).toFixed(2)),
-      memory_status: payload.measured_peak_vram_gb === null ? 'unknown' : payload.measured_peak_vram_gb >= payload.target_vram_gb ? 'exceeds_capacity' : 'below_capacity_check_headroom',
-      assumptions: ['Demo data is enabled. Connect the Python API for production estimates.', 'One GPU; partial final batches are retained; no gradient accumulation.', 'Measured memory is compared with selected capacity; it is not a predicted peak.'],
-    };
-  }
+  if (mockMode) return mockEstimate(payload);
   return request<EstimateResponse>('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 }
 
 export { mockMode };
+
+/**
+ * PROPOSED contracts (not implemented in the backend; do not call yet).
+ * POST /api/workloads/parse  — currently HTTP 501 (AI parsing placeholder).
+ * GET  /api/hardware         — would expose backend/data/hardware_catalog.json (per-GPU VRAM, source_url, last_verified).
+ * GET  /api/instances        — would expose instance_types.json (gpu_id, gpu_count, vcpu_count, cpu_ram_gib, storage).
+ * POST /api/estimate         — would need gpu_count, precision, optimizer and model parameter count for a modeled VRAM estimate.
+ */
+
+export type HardwareOption = { id: string; provider: 'catalog' | 'nebius'; label: string; vram_gib: number | null; memory_bandwidth_gb_s: number | null; hourly_price_usd: number | null; source_url: string | null; region: string | null };
+export type HardwareResponse = { items: HardwareOption[]; price_snapshot?: string | null; note: string };
+export type MemoryRequest = { workload: Record<string, unknown>; hardware?: { gpu: { vram_gib_per_gpu: number }; cpu?: { ram_gib: number }; storage?: { capacity_gib: number } }; assumptions?: Record<string, number>; deployment?: Record<string, unknown> };
+export type HostNeed = { required_ram_gib_per_node?: number | null; required_storage_gib_per_node?: number | null; available_gib_per_node: number | null; fits: boolean | null };
+export type MemoryResult = { status: string; gpu: { peak_vram_gib: number | null; total_vram_gib: number | null; usable_vram_gib: number | null; fits: boolean | null }; cpu?: HostNeed; nvme?: HostNeed; warnings: string[] };
+
+export async function fetchHardware(): Promise<HardwareResponse> {
+  return mockMode ? mockHardware : request<HardwareResponse>('/api/hardware');
+}
+/** Real: POST /api/estimate/memory (Python estimate_gpu_memory). Mock: labelled demo numbers. */
+export async function estimateMemory(body: MemoryRequest): Promise<MemoryResult> {
+  return mockMode ? mockMemory(body) : request<MemoryResult>('/api/estimate/memory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
