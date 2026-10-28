@@ -947,6 +947,24 @@ def estimate_gpu_memory(workload, assumptions=None, hardware=None, *, deployment
                         + count(a.get('additional_persistent_bytes', 0), 'additional_persistent_bytes'))
             gpu_peak = math.ceil(subtotal * (1 + config['fragmentation_fraction_high'])
                                  + config['runtime_overhead_high_mib'] * MIB)
+            # Per-GPU breakdown of the same terms, for explanation only (no new arithmetic).
+            parts = {f'{key}_on_gpu': placed for key, placed in (
+                (k, (comps[k]['bytes'] + divisors[k] - 1) // divisors[k]
+                 if d['placement'][k] == 'gpu' else 0) for k in STATE_CATEGORIES)}
+            parts.update({'autocast_weight_cache': cache_local, 'activations_and_auxiliary': active,
+                          'kernel_workspace': kernel, 'distributed_working_set': gpu_work,
+                          'optimizer_workspace': working['gpu_optimizer_workspace'][1],
+                          'additional_persistent': count(a.get('additional_persistent_bytes', 0),
+                                                         'additional_persistent_bytes'),
+                          'fragmentation_allowance': subtotal * config['fragmentation_fraction_high'],
+                          'runtime_overhead': config['runtime_overhead_high_mib'] * MIB})
+            result['breakdown_gib'] = {k: v / GIB for k, v in parts.items()}
+            result['planning_assumptions'] = {
+                'kernel_workspace_mib': config['kernel_workspace_high_mib'],
+                'kernel_workspace_fraction': config['kernel_workspace_fraction_high'],
+                'runtime_overhead_mib': config['runtime_overhead_high_mib'],
+                'fragmentation_fraction': config['fragmentation_fraction_high'],
+                'activation_multiplier': config['activation_multiplier_high']}
     if gpu_peak is not None:
         result['status'] = 'estimated_with_assumptions'
         result['gpu']['peak_vram_gib'] = gpu_peak / GIB
@@ -970,6 +988,7 @@ def estimate_gpu_memory(workload, assumptions=None, hardware=None, *, deployment
         result['errors'] = list(dict.fromkeys(errors))
     if warnings:
         result['warnings'] = warnings
+    result['assumption_notes'] = list(dict.fromkeys(notes))
     return result
 
 

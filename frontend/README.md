@@ -1,9 +1,8 @@
 # GPU Planner frontend
 
-The frontend is a React + TypeScript + Tailwind planner for the existing Python API.
+React + TypeScript + Tailwind planner for the Python API.
 
-- `npm install` installs the frontend dependencies.
-- Set `VITE_MOCK_MODE=true` in a local `.env` file to preview the complete flow without the Python API. Mock results are labeled Demo data.
+- `npm install` installs the frontend dependencies; `npm test` runs the form-logic tests; `npm run build` type-checks and builds.
 - Leave `VITE_API_BASE_URL` blank to use the Vite `/api` proxy, or set it to an API origin for a deployed backend.
-- The live integration currently uses `GET /api/gpus` and `POST /api/estimate`.
-- Workload parsing and benchmark submission remain visibly unimplemented backend endpoints; the upload only parses JSON in the browser and never executes uploaded Python.
+- All estimates come from the backend. The former `VITE_MOCK_MODE` demo data was removed with the old estimate contract.
+- The form is rendered from `GET /api/schema`; `src/lib/form.ts` holds provenance and merge rules (no silent overwrite of edits).
