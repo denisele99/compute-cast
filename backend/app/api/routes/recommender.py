@@ -1,13 +1,17 @@
-# backend/app/api/routes/recommendations.py
+"""POST /api/recommendations: code review via the hosted model. Needs NEBIUS_API_KEY server-side."""
 
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException
-from openai import APIError
+try:
+    from openai import APIError
+except ImportError:  # openai is optional until recommendations are used
+    APIError = ()  # type: ignore[assignment,misc]; an empty tuple catches nothing
 from pydantic import BaseModel, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from app.services.recommender import recommend
+from ...services.recommender import recommend, safe_path
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +34,12 @@ class RecommendationRequest(BaseModel):
 @router.post("")
 async def create_recommendations(request: RecommendationRequest):
     # Check user inputs before making a paid API request.
-    from app.services.recommender import safe_path
-
     try:
         if not request.prompt.strip() or not request.files:
             raise ValueError("Provide a prompt and at least one file.")
 
         for path in request.files:
             safe_path(path)
-
-        import json
 
         payload = request.model_dump()
         if len(json.dumps(payload).encode("utf-8")) > 250_000:
