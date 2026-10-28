@@ -6,7 +6,7 @@ Branch: `feature/connected-estimation-workflow`. Target: `main`.
 
 - Rebased onto current `main`, corrected the latest API router imports and restored the legacy calculation behind the original endpoint. Newer backend estimator/parser directories and frontend helper/page modules are retained. Legacy contracts remain covered by their original tests.
 - Explicitly load the TypeScript app. The starting snapshot contained conflicting legacy JS entrypoints; current main also removes those old files.
-- Added a connected workload → hardware → results flow, advanced settings, field validation, required/optional labels, grey defaults, red extraction uncertainty and upload review confirmation.
+- Added a connected workload → hardware → results flow, advanced settings, field validation, required/optional labels, red extraction uncertainty and upload review confirmation.
 - Python AST and safe JSON/YAML parsing populate the same typed form used by manual input. The server never imports uploaded code and does not save uploads. Conflicting, dynamic or invalid extracted values require review. Upload limits: 8 files, 250 KB per file, 1 MB combined.
 - Cache uploads and metadata only in page memory. Save immutable original metadata on the first successful run; compare subsequent inputs and export original/current configuration and source in a review/recommendation bundle. Refresh, close, or New analysis discards the in-memory cache.
 - Search up to 10 regional GPU offers from the two supplied Nebius snapshot files; display memory, region and USD/GPU-hour price, with autofill and custom overrides. The files contain 5 GPU platform definitions and 12 regional price offers; missing memory is never fabricated.
@@ -59,3 +59,18 @@ without constructing an empty `Annotated` wrapper. No estimator formulas changed
 Validation after this addition: 28 backend tests and 2 optional PyTorch example
 tests passed; the complete CPU training command also passed. CUDA benchmarking
 remains untested in this environment.
+
+## Frontend design refresh
+
+Restored the landing hero, top navigation and darker panel styling from main.
+Workload is separated into Model, Training setup and Dataset; measurements are
+under advanced training settings. Removed repetitive field-default captions,
+while retaining validation messages and extraction warnings. Prediction/benchmark
+controls appear only in Results. Hardware comparison now has search, region and
+fit filters, a scrollable selection list and an explicit Use this GPU action.
+Recommendations and original-run metadata are collapsed until opened. API
+contracts and backend estimator logic are unchanged by this visual refresh.
+
+Design-refresh validation: production build, 5 frontend unit tests and 9 connected
+browser tests passed, including responsive layout, landing navigation, compact
+comparison filters/selection, uploads and local benchmark report import.

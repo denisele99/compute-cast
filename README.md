@@ -32,7 +32,7 @@ port 8000. API documentation is available at `/docs` on the backend.
 ## Inputs and estimates
 
 Review all extracted fields before proceeding. Unsupported or uncertain values
-are marked in red; defaults appear in grey, and optional fields may remain empty.
+are marked in red; required fields use an asterisk, and optional fields may remain empty.
 The general configuration preserves original metadata, while a normalized subset
 is sent to the existing memory and runtime estimators.
 

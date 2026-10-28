@@ -1,9 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+async function openPlanner(page: Page) {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Open estimator", exact: true })
+    .first()
+    .click();
+}
 
 test("manual workload validates, connects to API, estimates, compares and preserves first run", async ({
   page,
 }) => {
-  await page.goto("/");
+  await openPlanner(page);
   await expect(
     page.getByText("PyTorch scripts only.", { exact: false }),
   ).toBeVisible();
@@ -14,17 +21,19 @@ test("manual workload validates, connects to API, estimates, compares and preser
     page.getByText("Batch size cannot exceed training examples."),
   ).toBeVisible();
   await page.getByLabel("Batch size per GPU", { exact: false }).fill("2");
-  await page.getByRole("button", { name: "Review hardware" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Hardware", exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("Price (USD / GPU-hour)", { exact: false }).fill("2");
+  await page.getByText("Advanced training settings", { exact: true }).click();
   await page
     .getByLabel("Matching measured seconds per microbatch", { exact: false })
     .fill("1");
   await page
     .getByLabel("Matching measured peak VRAM per GPU", { exact: false })
     .fill("6");
+
+  await page.getByRole("button", { name: "Review hardware" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Hardware", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Price (USD / GPU-hour)", { exact: false }).fill("2");
   await page.getByRole("button", { name: "Run estimate", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Results", exact: true }),
@@ -47,19 +56,22 @@ test("manual workload validates, connects to API, estimates, compares and preser
   await page.getByRole("button", { name: "Edit inputs" }).click();
   await page.getByLabel("Price (USD / GPU-hour)", { exact: false }).fill("3");
   await page.getByRole("button", { name: "Run estimate", exact: true }).click();
+  await page
+    .getByText("Original run & current inputs", { exact: true })
+    .click();
   await expect(
     page.getByText("hardware.price_per_gpu_hour:", { exact: false }),
   ).toBeVisible();
   await page.getByRole("button", { name: "New analysis" }).click();
   await expect(
-    page.getByRole("heading", { name: "Model & training inputs" }),
+    page.getByRole("heading", { name: "Model", exact: true }),
   ).toBeVisible();
 });
 
 test("Python/YAML uploads use real parser, require review, and flag conflicts", async ({
   page,
 }) => {
-  await page.goto("/");
+  await openPlanner(page);
   await page.getByLabel("Upload model and training files").setInputFiles([
     {
       name: "train.py",
@@ -104,7 +116,7 @@ test("Python/YAML uploads use real parser, require review, and flag conflicts", 
 test("catalog search autofills snapshot prices and handles unknown memory", async ({
   page,
 }) => {
-  await page.goto("/");
+  await openPlanner(page);
   await page.getByRole("button", { name: "Review hardware" }).click();
   const dropdown = page.getByLabel("GPU / platform", { exact: true });
   await expect(dropdown.locator("option")).toHaveCount(11);
@@ -134,7 +146,11 @@ test("catalog search autofills snapshot prices and handles unknown memory", asyn
 test("multiple GPUs require explicit strategy and changed workload clears stale timing", async ({
   page,
 }) => {
-  await page.goto("/");
+  await openPlanner(page);
+  await page.getByText("Advanced training settings", { exact: true }).click();
+  await page
+    .getByLabel("Matching measured seconds per microbatch", { exact: false })
+    .fill("1");
   await page.getByRole("button", { name: "Review hardware" }).click();
   await page.getByLabel("Available identical GPUs", { exact: false }).fill("4");
   await page.getByLabel("How many GPUs are used", { exact: false }).fill("2");
@@ -147,15 +163,14 @@ test("multiple GPUs require explicit strategy and changed workload clears stale 
   await page
     .getByLabel("Distribution / sharding", { exact: false })
     .selectOption("ddp");
-  await page
-    .getByLabel("Matching measured seconds per microbatch", { exact: false })
-    .fill("1");
   await page.getByLabel("Available identical GPUs", { exact: false }).fill("8");
+  await page.getByRole("button", { name: "← Workload", exact: true }).click();
   await expect(
     page.getByLabel("Matching measured seconds per microbatch", {
       exact: false,
     }),
   ).toHaveValue("");
+  await page.getByRole("button", { name: "Review hardware" }).click();
   await page.getByRole("button", { name: "Run estimate", exact: true }).click();
   await expect(
     page.getByText("31,250 microbatches per rank", { exact: false }),
@@ -165,7 +180,7 @@ test("multiple GPUs require explicit strategy and changed workload clears stale 
 test("benchmark report import updates results and refresh clears upload cache", async ({
   page,
 }) => {
-  await page.goto("/");
+  await openPlanner(page);
   await page.getByLabel("Upload model and training files").setInputFiles({
     name: "train.py",
     mimeType: "text/plain",
@@ -215,8 +230,12 @@ test("benchmark report import updates results and refresh clears upload cache", 
     fullPage: true,
   });
   await page.reload();
+  await page
+    .getByRole("button", { name: "Open estimator", exact: true })
+    .first()
+    .click();
   await expect(
-    page.getByRole("heading", { name: "Model & training inputs" }),
+    page.getByRole("heading", { name: "Model", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("train.py", { exact: true })).toHaveCount(0);
   await expect(
@@ -227,19 +246,18 @@ test("benchmark report import updates results and refresh clears upload cache", 
 test("metadata-only prediction uses explicit throughput assumptions without a benchmark", async ({
   page,
 }) => {
-  await page.goto("/");
+  await openPlanner(page);
   await page
     .getByLabel("Total model parameters", { exact: false })
     .fill("1000000");
-  await page
-    .getByText("Advanced model / training settings", { exact: true })
-    .click();
+  await page.getByText("Advanced model settings", { exact: true }).click();
   await page
     .getByLabel("Forward/backward FLOPs per microbatch", { exact: false })
     .fill("10000000000");
   await page
     .getByLabel("HBM traffic bytes per microbatch", { exact: false })
     .fill("1000000000");
+  await page.getByText("Advanced dataset settings", { exact: true }).click();
   await page
     .getByLabel("Assume data is already on the GPU", { exact: false })
     .check();
@@ -292,14 +310,12 @@ test("code proposals use cached uploads only after consent and apply through the
       },
     });
   });
-  await page.goto("/");
-  await page
-    .getByLabel("Upload model and training files")
-    .setInputFiles({
-      name: "train.py",
-      mimeType: "text/plain",
-      buffer: Buffer.from("batch_size = 8\nepochs = 2\nnum_examples = 100"),
-    });
+  await openPlanner(page);
+  await page.getByLabel("Upload model and training files").setInputFiles({
+    name: "train.py",
+    mimeType: "text/plain",
+    buffer: Buffer.from("batch_size = 8\nepochs = 2\nnum_examples = 100"),
+  });
   await expect(
     page.getByLabel("Batch size per GPU", { exact: false }),
   ).toHaveValue("8");
@@ -308,6 +324,9 @@ test("code proposals use cached uploads only after consent and apply through the
     .check();
   await page.getByRole("button", { name: "Review hardware" }).click();
   await page.getByRole("button", { name: "Run estimate", exact: true }).click();
+  await page
+    .getByText("Code recommendations · optional", { exact: true })
+    .click();
   const generate = page.getByRole("button", {
     name: "Generate code recommendations (paid API)",
     exact: true,
@@ -330,4 +349,95 @@ test("code proposals use cached uploads only after consent and apply through the
   await expect(
     page.getByLabel("I have verified the autofilled fields", { exact: false }),
   ).not.toBeChecked();
+});
+
+test("landing, grouped workload and regional comparison keep the flow compact", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "COMPUTE CAST", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "/tmp/compute-cast-landing-refresh.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Open estimator", exact: true })
+    .first()
+    .click();
+  for (const name of ["Model", "Training setup", "Dataset"])
+    await expect(
+      page.getByRole("heading", { name, exact: true }),
+    ).toBeVisible();
+  await expect(page.getByText(/^Default:/)).toHaveCount(0);
+  await page.screenshot({
+    path: "/tmp/compute-cast-workload-refresh.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Review hardware" }).click();
+  await expect(page.getByRole("group", { name: "Result mode" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Run estimate", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Result mode" })).toBeVisible();
+  const choices = page.getByRole("region", { name: "GPU comparison options" });
+  await expect(choices.getByRole("button")).toHaveCount(10);
+  expect(
+    await choices.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  await page
+    .getByLabel("Comparison region", { exact: true })
+    .selectOption("eu-north1");
+  await expect(choices.getByRole("button")).toHaveCount(2);
+  await page.getByLabel("Search comparison", { exact: true }).fill("H100");
+  await expect(choices.getByRole("button")).toHaveCount(1);
+  await choices.getByRole("button").click();
+  await expect(choices.getByRole("button")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByLabel("Within memory limit only").check();
+  await expect(
+    page.getByText("No matching GPUs.", { exact: false }),
+  ).toBeVisible();
+  await page.getByLabel("Within memory limit only").uncheck();
+  await page.screenshot({
+    path: "/tmp/compute-cast-results-refresh.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Use this GPU", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Hardware", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Price (USD / GPU-hour)", { exact: false }),
+  ).toHaveValue("0.79");
+  await page.getByRole("button", { name: "Overview", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "COMPUTE CAST", exact: true }),
+  ).toBeVisible();
+});
+
+test("planner fits a mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openPlanner(page);
+  await expect(
+    page.getByRole("heading", { name: "Dataset", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: "Review hardware" }).click();
+  await page.getByRole("button", { name: "Run estimate", exact: true }).click();
+  await expect(
+    page.getByRole("region", { name: "GPU comparison options" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });

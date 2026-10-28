@@ -12,6 +12,8 @@ import {
   Upload,
 } from "./workflowApi";
 import "./planner.css";
+import { LandingPage, TopBar } from "./components/Landing";
+import { HardwareComparison } from "./components/HardwareComparison";
 
 type Snapshot = {
   config: Analysis;
@@ -120,6 +122,7 @@ function validation(config: Analysis): Record<string, string> {
 }
 
 export default function App() {
+  const [screen, setScreen] = useState<"landing" | "planner">("landing");
   const [config, setConfig] = useState<Analysis>(initialConfig);
   const [step, setStep] = useState<"workload" | "hardware" | "results">(
     "workload",
@@ -158,6 +161,9 @@ export default function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   const errors = { ...validation(config), ...serverErrors };
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [step, screen]);
   const hasUploads = files.length > 0;
   const stale =
     result && JSON.stringify(result.config) !== JSON.stringify(config);
@@ -321,7 +327,7 @@ export default function App() {
     path: string,
     label: string,
     optional = false,
-    hint = "",
+    _hint = "",
     required = false,
   ) {
     const [group, key] = path.split(".");
@@ -357,15 +363,7 @@ export default function App() {
           id={`${path}-help`}
           className={showError || warning ? "field-error" : "muted"}
         >
-          {showError ||
-            (warning
-              ? `* ${uncertain[path]}`
-              : hint ||
-                (!touched[path] && value !== null
-                  ? `Default: ${value}`
-                  : optional && value === null
-                    ? "Not supplied; remains unknown."
-                    : ""))}
+          {showError || (warning ? `* ${uncertain[path]}` : "")}
         </span>
       </label>
     );
@@ -374,7 +372,7 @@ export default function App() {
     path: string,
     label: string,
     options: string[],
-    hint: string,
+    _hint: string,
   ) {
     const [group, key] = path.split(".");
     const value = (
@@ -399,7 +397,7 @@ export default function App() {
               : "muted"
           }
         >
-          {((submitted || touched[path]) && errors[path]) || hint}
+          {(submitted || touched[path]) && errors[path]}
         </span>
       </label>
     );
@@ -459,7 +457,7 @@ export default function App() {
       setTouched({});
       setServerErrors({});
       setMessage(
-        "Review all autofilled fields. Red * marks missing or uncertain extraction; optional values may stay empty. Defaults are shown in grey.",
+        "Review all autofilled fields. Red * marks missing or uncertain extraction; optional values may stay empty. Review uncertain values before continuing.",
       );
     } catch (error) {
       if (run === generation.current)
@@ -670,795 +668,815 @@ export default function App() {
         );
       })
     : [];
+  if (screen === "landing")
+    return <LandingPage onStart={() => setScreen("planner")} />;
   return (
-    <main className="planner">
-      <header className="planner-header">
-        <div>
-          <p className="eyebrow">COMPUTE CAST / GPU PLANNER</p>
-          <h1>Plan your training run.</h1>
-          <p>
-            PyTorch scripts only. Upload Python and YAML/JSON configs, or enter
-            the same inputs manually.
+    <>
+      <TopBar
+        onLogo={() => setScreen("landing")}
+        onBack={() => setScreen("landing")}
+      />
+      <main className="planner">
+        <header className="planner-header">
+          <div>
+            <h1>Plan your training run.</h1>
+            <p>PyTorch scripts only. Upload files or enter your workload.</p>
+          </div>
+          <button className="secondary" onClick={reset}>
+            New analysis
+          </button>
+        </header>
+        <nav aria-label="Analysis steps">
+          {(["workload", "hardware", "results"] as const).map((item, index) => (
+            <button
+              key={item}
+              aria-current={step === item ? "step" : undefined}
+              disabled={busy || (item === "results" && !result)}
+              onClick={() => {
+                if (item === "hardware" && step === "workload") void next();
+                else {
+                  setStep(item);
+                  setSubmitted(false);
+                }
+              }}
+            >
+              {index + 1}. {item}
+            </button>
+          ))}
+        </nav>
+        {message && (
+          <div className="notice" role="status">
+            {message}
+          </div>
+        )}
+        {Object.entries(serverErrors).map(([key, value]) => (
+          <p role="alert" className="field-error" key={key}>
+            {key || "Inputs"}: {value}
           </p>
-        </div>
-        <button className="secondary" onClick={reset}>
-          New analysis
-        </button>
-      </header>
-      <nav aria-label="Analysis steps">
-        {(["workload", "hardware", "results"] as const).map((item, index) => (
-          <span key={item} aria-current={step === item ? "step" : undefined}>
-            {index + 1}. {item}
-          </span>
         ))}
-      </nav>
-      {message && (
-        <div className="notice" role="status">
-          {message}
-        </div>
-      )}
-      {Object.entries(serverErrors).map(([key, value]) => (
-        <p role="alert" className="field-error" key={key}>
-          {key || "Inputs"}: {value}
-        </p>
-      ))}
-      {step === "workload" && (
-        <>
-          <section>
-            <h2>Model & training inputs</h2>
-            <p>
-              Uploads are held in this page’s memory for recommendations and
-              exports. The server parses each request without caching files.
-              Refreshing, closing the page, or starting a new analysis clears
-              this cache.
-            </p>
-            <label className="upload">
-              Upload model/training Python scripts or JSON/YAML configs
-              <input
-                ref={fileInput}
-                aria-label="Upload model and training files"
-                type="file"
-                accept=".py,.json,.yaml,.yml"
-                multiple
-                disabled={busy}
-                onChange={upload}
-              />
-            </label>
-            <p className="muted">
-              Up to 8 files · 250 KB each · 1 MB total. Scripts are inspected
-              with Python AST, never imported or executed by the upload API.
-              Dynamic model shapes and parameter counts may require manual
-              input.
-            </p>
-            {files.map((file) => (
-              <div className="file" key={file.name}>
-                <span>{file.name}</span>
-                <button
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() => {
-                    setFiles((previous) =>
-                      previous.filter((item) => item.name !== file.name),
-                    );
-                    setMetadata((previous) => {
-                      const next = { ...previous };
-                      delete next[file.name];
-                      return next;
-                    });
-                    setConfig((previous) => {
-                      const next = { ...previous.model.config };
-                      delete next[file.name];
-                      return {
-                        ...previous,
-                        model: { ...previous.model, config: next },
-                      };
-                    });
-                    setProposal(null);
-                    setReviewed(false);
-                    setMessage(
-                      "File removed from cache. Previously extracted fields remain editable; review them before continuing.",
-                    );
-                    setUploadErrors((previous) => {
-                      const next = { ...previous };
-                      delete next[file.name];
-                      return next;
-                    });
-                  }}
-                >
-                  Remove
-                </button>
-                {uploadErrors[file.name] && (
-                  <p className="field-error">{uploadErrors[file.name]}</p>
-                )}
-              </div>
-            ))}
-            {hasUploads && (
-              <label className="check">
+        {step === "workload" && (
+          <>
+            <section>
+              <p className="eyebrow">01 / WORKLOAD</p>
+              <h2>Model</h2>
+              <p className="muted">
+                PyTorch only. Add your scripts and configs, or enter details
+                below.
+              </p>
+              <label className="upload">
+                Upload model/training Python scripts or JSON/YAML configs
                 <input
-                  type="checkbox"
-                  checked={reviewed}
-                  onChange={(event) => setReviewed(event.target.checked)}
+                  ref={fileInput}
+                  aria-label="Upload model and training files"
+                  type="file"
+                  accept=".py,.json,.yaml,.yml"
+                  multiple
+                  disabled={busy}
+                  onChange={upload}
                 />
-                I have verified the autofilled fields and reviewed any defaults
-                or missing values.
               </label>
-            )}
-            <div className="form-grid">
-              {numeric(
-                "training.examples",
-                "Training examples",
-                false,
-                "",
-                true,
+              <details className="upload-notes">
+                <summary>Supported files & privacy</summary>
+                <p>
+                  Python, JSON or YAML. Up to 8 files, 250 KB each and 1 MB
+                  total. Scripts are never executed during upload. Files stay in
+                  page memory until refresh or a new analysis.
+                </p>
+              </details>
+              {files.map((file) => (
+                <div className="file" key={file.name}>
+                  <span>{file.name}</span>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      setFiles((previous) =>
+                        previous.filter((item) => item.name !== file.name),
+                      );
+                      setMetadata((previous) => {
+                        const next = { ...previous };
+                        delete next[file.name];
+                        return next;
+                      });
+                      setConfig((previous) => {
+                        const next = { ...previous.model.config };
+                        delete next[file.name];
+                        return {
+                          ...previous,
+                          model: { ...previous.model, config: next },
+                        };
+                      });
+                      setProposal(null);
+                      setReviewed(false);
+                      setMessage(
+                        "File removed from cache. Previously extracted fields remain editable; review them before continuing.",
+                      );
+                      setUploadErrors((previous) => {
+                        const next = { ...previous };
+                        delete next[file.name];
+                        return next;
+                      });
+                    }}
+                  >
+                    Remove
+                  </button>
+                  {uploadErrors[file.name] && (
+                    <p className="field-error">{uploadErrors[file.name]}</p>
+                  )}
+                </div>
+              ))}
+              {hasUploads && (
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={reviewed}
+                    onChange={(event) => setReviewed(event.target.checked)}
+                  />
+                  I have verified the autofilled fields and reviewed any
+                  defaults or missing values.
+                </label>
               )}
-              {numeric(
-                "training.batch_size",
-                "Batch size per GPU",
-                false,
-                "",
-                true,
-              )}
-              {numeric("training.epochs", "Epochs", false, "", true)}
-              {numeric(
-                "model.total_params",
-                "Total model parameters",
-                true,
-                "Needed for a model-based memory estimate; unknown is allowed.",
-              )}
-            </div>
-            <details>
-              <summary>Advanced model / training settings</summary>
               <div className="form-grid">
-                {numeric("training.sequence_length", "Sequence length")}
+                {numeric("model.total_params", "Total model parameters", true)}
+              </div>
+              <details>
+                <summary>Advanced model settings</summary>
+                <div className="form-grid">
+                  {numeric(
+                    "model.activation_gib",
+                    "Saved activation storage per rank (GiB)",
+                    true,
+                  )}
+                  {numeric(
+                    "model.auxiliary_gib",
+                    "Auxiliary tensor storage per rank (GiB)",
+                    true,
+                  )}
+                  {numeric(
+                    "model.flops_per_microbatch",
+                    "Forward/backward FLOPs per microbatch",
+                    true,
+                  )}
+                  {numeric(
+                    "model.hbm_bytes_per_microbatch",
+                    "HBM traffic bytes per microbatch",
+                    true,
+                  )}
+                </div>
+                <p className="muted">
+                  Planning overrides for activation memory and runtime. Use
+                  values for the same batch and model.
+                </p>
+              </details>
+            </section>
+            <section>
+              <p className="eyebrow">02 / WORKLOAD</p>
+              <h2>Training setup</h2>
+              <div className="form-grid three-columns">
                 {numeric(
-                  "training.gradient_accumulation_steps",
-                  "Gradient accumulation steps",
+                  "training.batch_size",
+                  "Batch size per GPU",
+                  false,
+                  "",
+                  true,
                 )}
+                {numeric("training.epochs", "Epochs", false, "", true)}
                 {select(
                   "training.precision",
                   "Compute precision",
                   ["fp32", "fp16", "bf16"],
-                  "Default FP32. Stored parameters and gradients are assumed FP32.",
+                  "",
                 )}
                 {select(
                   "training.optimizer",
                   "Optimizer",
                   ["AdamW", "Adam", "SGD"],
-                  "Default AdamW; FP32 optimizer state. SGD assumes no momentum.",
+                  "",
                 )}
                 {numeric(
-                  "model.activation_gib",
-                  "Saved activation storage per rank (GiB)",
-                  true,
-                  "Optional planning override, not inferred from parameter count.",
-                )}
-                {numeric(
-                  "model.auxiliary_gib",
-                  "Auxiliary tensor storage per rank (GiB)",
-                  true,
-                  "Provide together with activation storage for a peak estimate.",
-                )}
-                {numeric(
-                  "model.flops_per_microbatch",
-                  "Forward/backward FLOPs per microbatch",
-                  true,
-                  "For metadata-only runtime planning; use operation counts for this exact per-rank batch.",
-                )}
-                {numeric(
-                  "model.hbm_bytes_per_microbatch",
-                  "HBM traffic bytes per microbatch",
-                  true,
-                  "Traffic, not resident VRAM. Required alongside FLOPs.",
+                  "training.gradient_accumulation_steps",
+                  "Gradient accumulation steps",
                 )}
               </div>
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={config.training.assume_data_ready}
-                  onChange={(event) =>
-                    update("training.assume_data_ready", event.target.checked)
-                  }
-                />
-                Assume data is already on the GPU / loading is completely hidden
-                (optional runtime planning assumption).
-              </label>
-              <p className="muted">
-                Assumptions: dense fully trainable parameters, zero model
-                buffers, no extra master copy, no checkpointing, one balanced
-                node. Unsupported models may remain incomplete. Original configs
-                are retained in the general export; only supported fields enter
-                the normalized estimator config.
-              </p>
-            </details>
-          </section>
-          <button disabled={busy} onClick={next}>
-            {busy ? "Validating…" : "Review hardware →"}
-          </button>
-        </>
-      )}
-      {step === "hardware" && (
-        <>
-          <section>
-            <h2>Hardware</h2>
-            <label className="input-label">
-              Search Nebius platforms / regions
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="H200, H100, eu-north1…"
-              />
-            </label>
-            {catalogError && (
-              <p className="field-error" role="alert">
-                {catalogError}
-              </p>
-            )}
-            <label className="input-label" htmlFor="gpu-platform">
-              GPU / platform
-              <select
-                id="gpu-platform"
-                aria-label="GPU / platform"
-                value={config.hardware.option_id}
-                onChange={(event) => chooseOffer(event.target.value)}
-              >
-                <option value="custom">Custom hardware</option>
-                {!offers.some(
-                  (offer) => offer.id === config.hardware.option_id,
-                ) &&
-                  config.hardware.option_id !== "custom" && (
-                    <option value={config.hardware.option_id}>
-                      {config.hardware.name} (selected)
-                    </option>
+              <details>
+                <summary>Advanced training settings</summary>
+                <p className="muted">
+                  Optional measurements must match your current hardware and
+                  training setup.
+                </p>
+                <div className="form-grid">
+                  {numeric(
+                    "training.seconds_per_batch",
+                    "Matching measured seconds per microbatch",
+                    true,
                   )}
-                {offers.map((offer) => (
-                  <option key={offer.id} value={offer.id}>
-                    {offer.name} · {offer.region} ·{" "}
-                    {offer.memory_gb === null
-                      ? "Memory unknown"
-                      : `${offer.memory_gb} GB`}{" "}
-                    · ${offer.price_per_gpu_hour}/GPU-hour
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="muted">
-              {catalogNote} Showing up to 10 matching offers. Regional variants
-              are separate offers.
-            </p>
-            <div className="form-grid">
-              {numeric(
-                "hardware.vram_gib",
-                "Memory per GPU (GiB)",
-                false,
-                config.hardware.option_id !== "custom"
-                  ? "Catalogue GB converted to GiB; verify capacity."
-                  : "Default custom GPU: 24 GiB. Verify your actual device.",
-                true,
-              )}
-              {numeric(
-                "hardware.price_per_gpu_hour",
-                "Price (USD / GPU-hour)",
-                true,
-                "Autofilled for catalogue offers; editable. Empty price leaves cost unknown.",
-              )}
-              {numeric(
-                "hardware.memory_limit_gib",
-                "Usable memory limit per GPU (GiB)",
-                true,
-                `Default: 90% of capacity (${number(config.hardware.vram_gib === null ? null : config.hardware.vram_gib * 0.9)} GiB).`,
-              )}
-              {numeric(
-                "hardware.available_gpus",
-                "Available identical GPUs",
-                false,
-                "Default 1. Availability does not imply the script uses every GPU.",
-                true,
-              )}
-              {(config.hardware.available_gpus > 1 ||
-                config.training.script_gpu_count > 1) &&
-                numeric(
-                  "training.script_gpu_count",
-                  "How many GPUs are used in your current training script?",
-                  false,
-                  "Default 1, or a reviewed value extracted from training info.",
-                  true,
-                )}
-              {select(
-                "training.strategy",
-                "Distribution / sharding",
-                ["single", "ddp", "zero1", "zero2", "zero3", "fsdp_full_shard"],
-                "Default single GPU. DDP replicates states; ZeRO/FSDP explicitly shard states. This plans resources; it does not rewrite your training script.",
-              )}
-            </div>
-            <details>
-              <summary>Advanced hardware settings · optional</summary>
+                  {numeric(
+                    "training.measured_peak_vram_gib",
+                    "Matching measured peak VRAM per GPU (GiB)",
+                    true,
+                  )}
+                </div>
+                <p className="muted">
+                  Memory planning assumes dense FP32 stored weights and
+                  gradients, no extra master copy or checkpointing. Full
+                  assumptions appear with your results.
+                </p>
+              </details>
+            </section>
+            <section>
+              <p className="eyebrow">03 / WORKLOAD</p>
+              <h2>Dataset</h2>
               <div className="form-grid">
                 {numeric(
-                  "hardware.cpu_ram_gib",
-                  "Available CPU RAM (GiB)",
+                  "training.examples",
+                  "Training examples",
+                  false,
+                  "",
                   true,
                 )}
-                {numeric("hardware.cpu_cores", "CPU cores", true)}
-                {numeric("hardware.nvme_gib", "NVMe capacity (GiB)", true)}
-                {numeric("hardware.ssd_gib", "SSD capacity (GiB)", true)}
+                {numeric("training.sequence_length", "Sequence length")}
+              </div>
+              <details>
+                <summary>Advanced dataset settings</summary>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={config.training.assume_data_ready}
+                    onChange={(event) =>
+                      update("training.assume_data_ready", event.target.checked)
+                    }
+                  />
+                  Assume data is already on the GPU / loading is completely
+                  hidden (optional runtime planning assumption).
+                </label>
+              </details>
+            </section>
+            <button disabled={busy} onClick={next}>
+              {busy ? "Validating…" : "Review hardware →"}
+            </button>
+          </>
+        )}
+        {step === "hardware" && (
+          <>
+            <section>
+              <p className="eyebrow">04 / COMPUTE</p>
+              <h2>Hardware</h2>
+              <p className="muted">
+                Choose a GPU and region. Memory is per GPU; an empty limit
+                reserves 10% of capacity.
+              </p>
+              <label className="input-label">
+                Search Nebius platforms / regions
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="H200, H100, eu-north1…"
+                />
+              </label>
+              {catalogError && (
+                <p className="field-error" role="alert">
+                  {catalogError}
+                </p>
+              )}
+              <label className="input-label" htmlFor="gpu-platform">
+                GPU / platform
+                <select
+                  id="gpu-platform"
+                  aria-label="GPU / platform"
+                  value={config.hardware.option_id}
+                  onChange={(event) => chooseOffer(event.target.value)}
+                >
+                  <option value="custom">Custom hardware</option>
+                  {!offers.some(
+                    (offer) => offer.id === config.hardware.option_id,
+                  ) &&
+                    config.hardware.option_id !== "custom" && (
+                      <option value={config.hardware.option_id}>
+                        {config.hardware.name} (selected)
+                      </option>
+                    )}
+                  {offers.map((offer) => (
+                    <option key={offer.id} value={offer.id}>
+                      {offer.name} · {offer.region} ·{" "}
+                      {offer.memory_gb === null
+                        ? "Memory unknown"
+                        : `${offer.memory_gb} GB`}{" "}
+                      · ${offer.price_per_gpu_hour}/GPU-hour
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <details className="catalog-notes">
+                <summary>About these prices</summary>
+                <p className="muted">{catalogNote}</p>
+              </details>
+              <div className="form-grid">
                 {numeric(
-                  "hardware.compute_tflops",
-                  "GPU dense compute peak at selected precision (TFLOPS)",
+                  "hardware.vram_gib",
+                  "Memory per GPU (GiB)",
+                  false,
+                  config.hardware.option_id !== "custom"
+                    ? "Catalogue GB converted to GiB; verify capacity."
+                    : "Default custom GPU: 24 GiB. Verify your actual device.",
                   true,
-                  "Required for metadata-only runtime. Catalogue snapshots do not contain throughput.",
                 )}
                 {numeric(
-                  "hardware.fp32_tflops",
-                  "GPU FP32 peak for optimizer (TFLOPS)",
+                  "hardware.price_per_gpu_hour",
+                  "Price (USD / GPU-hour)",
                   true,
+                  "Autofilled for catalogue offers; editable. Empty price leaves cost unknown.",
                 )}
                 {numeric(
-                  "hardware.memory_bandwidth_gbps",
-                  "GPU memory bandwidth (GB/s)",
+                  "hardware.memory_limit_gib",
+                  "Usable memory limit per GPU (GiB)",
                   true,
+                  `Default: 90% of capacity (${number(config.hardware.vram_gib === null ? null : config.hardware.vram_gib * 0.9)} GiB).`,
                 )}
                 {numeric(
-                  "hardware.gpu_link_gbps",
-                  "Effective GPU–GPU bandwidth (GB/s)",
+                  "hardware.available_gpus",
+                  "Available identical GPUs",
+                  false,
+                  "Default 1. Availability does not imply the script uses every GPU.",
                   true,
-                  "Needed for multi-GPU runtime planning.",
+                )}
+                {(config.hardware.available_gpus > 1 ||
+                  config.training.script_gpu_count > 1) &&
+                  numeric(
+                    "training.script_gpu_count",
+                    "How many GPUs are used in your current training script?",
+                    false,
+                    "Default 1, or a reviewed value extracted from training info.",
+                    true,
+                  )}
+                {select(
+                  "training.strategy",
+                  "Distribution / sharding",
+                  [
+                    "single",
+                    "ddp",
+                    "zero1",
+                    "zero2",
+                    "zero3",
+                    "fsdp_full_shard",
+                  ],
+                  "Default single GPU. DDP replicates states; ZeRO/FSDP explicitly shard states. This plans resources; it does not rewrite your training script.",
+                )}
+              </div>
+              <details>
+                <summary>Advanced hardware settings · optional</summary>
+                <div className="form-grid">
+                  {numeric(
+                    "hardware.cpu_ram_gib",
+                    "Available CPU RAM (GiB)",
+                    true,
+                  )}
+                  {numeric("hardware.cpu_cores", "CPU cores", true)}
+                  {numeric("hardware.nvme_gib", "NVMe capacity (GiB)", true)}
+                  {numeric("hardware.ssd_gib", "SSD capacity (GiB)", true)}
+                  {numeric(
+                    "hardware.compute_tflops",
+                    "GPU dense compute peak at selected precision (TFLOPS)",
+                    true,
+                    "Required for metadata-only runtime. Catalogue snapshots do not contain throughput.",
+                  )}
+                  {numeric(
+                    "hardware.fp32_tflops",
+                    "GPU FP32 peak for optimizer (TFLOPS)",
+                    true,
+                  )}
+                  {numeric(
+                    "hardware.memory_bandwidth_gbps",
+                    "GPU memory bandwidth (GB/s)",
+                    true,
+                  )}
+                  {numeric(
+                    "hardware.gpu_link_gbps",
+                    "Effective GPU–GPU bandwidth (GB/s)",
+                    true,
+                    "Needed for multi-GPU runtime planning.",
+                  )}
+                  <label className="input-label">
+                    CPU specifications
+                    <input
+                      value={config.hardware.cpu_specs}
+                      maxLength={500}
+                      onChange={(event) =>
+                        update("hardware.cpu_specs", event.target.value)
+                      }
+                    />
+                  </label>
+                </div>
+                <p className="muted">
+                  Retained for review; these capacities alone cannot predict CPU
+                  RAM demand, data loading, or storage throughput. CPU/NVMe
+                  offload is not enabled by filling these fields.
+                </p>
+              </details>
+            </section>
+            <div className="actions">
+              <button
+                className="secondary"
+                onClick={() => {
+                  setStep("workload");
+                  setSubmitted(false);
+                }}
+              >
+                ← Workload
+              </button>
+              <button disabled={busy} onClick={estimate}>
+                {busy ? "Estimating…" : "Run estimate"}
+              </button>
+            </div>
+          </>
+        )}
+        {step === "results" && result && (
+          <>
+            <section>
+              <div className="actions">
+                <h2>Results</h2>
+                <Mode mode={mode} setMode={setMode} />
+              </div>
+              {stale && (
+                <p className="notice">
+                  Inputs have changed. These results describe the last completed
+                  run; run the estimate again to update them.
+                </p>
+              )}
+              <p className="muted">
+                {benchmarkConfig &&
+                JSON.stringify(config) === JSON.stringify(benchmarkConfig)
+                  ? "Imported local benchmark measurements"
+                  : "Prediction / user-supplied metadata"}{" "}
+                · {result.config.hardware.name} ·{" "}
+                {result.config.training.script_gpu_count} active GPU(s)
+              </p>
+              <div className="result-grid">
+                <Metric
+                  title="Training runtime"
+                  value={number(result.training_hours, " h")}
+                />
+                <Metric
+                  title="GPU time"
+                  value={number(result.gpu_hours, " GPU-h")}
+                />
+                <Metric
+                  title="Estimated GPU cost"
+                  value={
+                    result.training_cost_usd === null
+                      ? "Unknown"
+                      : `$${result.training_cost_usd.toFixed(4)}`
+                  }
+                />
+              </div>
+              <p className="muted">Timing source: {result.timing_source}</p>
+              {result.runtime_details?.scenarios && (
+                <p className="muted">
+                  Planning scenarios:{" "}
+                  {Object.entries(result.runtime_details.scenarios)
+                    .map(
+                      ([name, data]) =>
+                        `${name}: ${number(data.training_hours, " h")}`,
+                    )
+                    .join(" · ")}
+                  . These are assumptions, not confidence bounds.
+                </p>
+              )}
+              <h3>Does the model fit?</h3>
+              <p className={result.gpu.fits === false ? "field-error" : ""}>
+                {result.gpu.fits === null
+                  ? "Unknown — more memory metadata or a matching measurement is needed."
+                  : result.gpu.fits
+                    ? "Within the selected memory limit; test on the actual GPU before a full run."
+                    : "Exceeds the selected per-GPU memory limit."}
+              </p>
+              <label>
+                VRAM · {number(result.gpu.peak_vram_gib, " GiB")} /{" "}
+                {number(result.gpu.capacity_gib, " GiB")} · {result.gpu.source}
+                <progress
+                  aria-label="VRAM utilization"
+                  max={100}
+                  value={result.gpu.utilization_percent ?? 0}
+                />
+                {result.gpu.utilization_percent === null
+                  ? "Usage unknown"
+                  : `${result.gpu.utilization_percent.toFixed(1)}% of physical capacity`}{" "}
+                · usable limit {number(result.gpu.limit_gib, " GiB")}
+              </label>
+              <p>
+                CPU RAM: required <b>unknown</b> / available{" "}
+                {number(result.cpu.capacity_gib, " GiB")}. Usage needs
+                allocation metadata.
+              </p>
+              <p>
+                {result.training_steps.toLocaleString()} microbatches per rank ·{" "}
+                {result.optimizer_updates.toLocaleString()} optimizer updates.
+              </p>
+              <details>
+                <summary>How we calculated this</summary>
+                <p>
+                  Microbatches per rank = ceil(ceil(examples / active GPUs) /
+                  per-GPU batch size) × epochs. Runtime = microbatches ×
+                  matching measured seconds per microbatch. Cost = hours ×
+                  active GPUs × price per GPU-hour. Accumulation changes
+                  optimizer update count, not the number of forward/backward
+                  microbatches.
+                </p>
+                <ul>
+                  {result.assumptions.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+                {result.memory_details?.errors?.map((error) => (
+                  <p className="field-error" key={error}>
+                    {error}
+                  </p>
+                ))}
+                {result.memory_details?.warnings?.map((warning) => (
+                  <p key={warning}>{warning}</p>
+                ))}
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    download(
+                      "normalized_estimator_config.json",
+                      result.normalized,
+                    )
+                  }
+                >
+                  Download normalized estimator config
+                </button>
+              </details>
+            </section>
+            {mode === "benchmark" && (
+              <section>
+                <h2>Benchmark this workload</h2>
+                <p>
+                  Requires a GPU and trusted training code. Cloud execution can
+                  incur additional charges; inspect the prediction and cost
+                  assumptions first.
+                </p>
+                <p>
+                  Illustrative 60-second GPU-only benchmark cost:{" "}
+                  <b>
+                    {result.benchmark.estimated_gpu_cost_usd === null
+                      ? "Unknown — enter a GPU-hour price"
+                      : `$${result.benchmark.estimated_gpu_cost_usd.toFixed(4)}`}
+                  </b>
+                  . {result.benchmark.note}
+                </p>
+                <h3>Run on Nebius</h3>
+                <button
+                  disabled
+                  title="Cloud job provisioning and billing authorization are not implemented"
+                >
+                  Run benchmark on Nebius — unavailable
+                </button>
+                <p className="muted">
+                  Cloud provisioning, billing consent, job isolation and
+                  credentials still need integration. No paid service is called.
+                </p>
+                <h3>Run locally</h3>
+                <ol>
+                  <li>
+                    Use a CUDA GPU with matching hardware and install your
+                    project’s PyTorch/dependencies locally.
+                  </li>
+                  <li>
+                    Keep your model script, training adapter, data sample and
+                    all project imports available. The training file must expose{" "}
+                    <code>build_benchmark(model_path, data_path)</code>,
+                    returning a no-argument callable for one complete training
+                    microbatch. It must match the exported config.
+                  </li>
+                  <li>
+                    Download the runner and current config. Inspect your
+                    scripts: the local runner executes your training adapter. It
+                    supports one GPU; distributed benchmarking requires a
+                    distributed runner.
+                  </li>
+                  <li>
+                    Run the command, review the report, then import it below.
+                    Only matching workload/configuration reports are accepted.
+                  </li>
+                </ol>
+                <div className="actions">
+                  <a className="button" href={benchmarkURL} download>
+                    Download benchmark script
+                  </a>
+                  <button
+                    className="secondary"
+                    onClick={() => download("analysis_config.json", config)}
+                  >
+                    Download current config
+                  </button>
+                </div>
+                <pre>
+                  python run_benchmark.py --model model_path --train
+                  training_path --data_sample data --config analysis_config.json
+                  --output benchmark.json
+                </pre>
+                <label className="upload">
+                  Import completed benchmark report
+                  <input
+                    aria-label="Import benchmark report"
+                    type="file"
+                    accept=".json"
+                    onChange={importBenchmark}
+                  />
+                </label>
+              </section>
+            )}
+            <HardwareComparison
+              offers={result.comparison}
+              onSelect={(offer) => {
+                setConfig((previous) => ({
+                  ...previous,
+                  training: {
+                    ...previous.training,
+                    seconds_per_batch: null,
+                    measured_peak_vram_gib: null,
+                  },
+                  hardware: {
+                    ...previous.hardware,
+                    option_id: offer.id,
+                    name: `${offer.name} · ${offer.region}`,
+                    vram_gib: offer.vram_gib ?? (null as unknown as number),
+                    memory_limit_gib: null,
+                    price_per_gpu_hour: offer.price_per_gpu_hour,
+                    compute_tflops: null,
+                    fp32_tflops: null,
+                    memory_bandwidth_gbps: null,
+                    gpu_link_gbps: null,
+                  },
+                }));
+                setServerErrors({});
+                setSubmitted(false);
+                setBenchmarkConfig(null);
+                setStep("hardware");
+              }}
+            />
+            <section className="secondary-section">
+              <details>
+                <summary>Code recommendations · optional</summary>
+                <p>
+                  Use the cached model/training files and original/current
+                  metadata to request a proposed script update. Generated files
+                  require review and testing. The provider request limit is 250
+                  KB including metadata.
+                </p>
+                {!recommendationReady && (
+                  <p className="muted">
+                    The model provider is not configured. Configure
+                    NEBIUS_API_KEY and the OpenAI SDK on the backend to enable
+                    this optional feature. Estimation and local benchmarks work
+                    independently.
+                  </p>
+                )}
+                {!files.length && (
+                  <p className="muted">
+                    Upload source files on the workload step to enable code
+                    recommendations.
+                  </p>
                 )}
                 <label className="input-label">
-                  CPU specifications
-                  <input
-                    value={config.hardware.cpu_specs}
-                    maxLength={500}
+                  Recommendation goal
+                  <textarea
+                    rows={3}
+                    value={recommendationPrompt}
+                    maxLength={10000}
                     onChange={(event) =>
-                      update("hardware.cpu_specs", event.target.value)
+                      setRecommendationPrompt(event.target.value)
                     }
                   />
                 </label>
-              </div>
-              <p className="muted">
-                Retained for review; these capacities alone cannot predict CPU
-                RAM demand, data loading, or storage throughput. CPU/NVMe
-                offload is not enabled by filling these fields.
-              </p>
-            </details>
-          </section>
-          <section>
-            <h2>Prediction or benchmark</h2>
-            <Mode mode={mode} setMode={setMode} />
-            <p>
-              Prediction is immediate and uses metadata only. Benchmarking is
-              more accurate for the measured workload, requires GPU access, and
-              may incur cloud charges.
-            </p>
-            <div className="form-grid">
-              {numeric(
-                "training.seconds_per_batch",
-                "Matching measured seconds per microbatch",
-                true,
-                "Includes forward, loss, backward, optimizer/data work for the current GPU count. Empty uses explicit runtime metadata if complete; otherwise time remains unknown.",
-              )}
-              {numeric(
-                "training.measured_peak_vram_gib",
-                "Matching measured peak VRAM per GPU (GiB)",
-                true,
-                "Empty uses the memory planner if sufficient metadata is supplied.",
-              )}
-            </div>
-            <p className="muted">
-              Changing hardware, batch size or sharding invalidates earlier
-              measurements. Re-enter only measurements matching the current
-              setup.
-            </p>
-          </section>
-          <div className="actions">
-            <button
-              className="secondary"
-              onClick={() => {
-                setStep("workload");
-                setSubmitted(false);
-              }}
-            >
-              ← Workload
-            </button>
-            <button disabled={busy} onClick={estimate}>
-              {busy ? "Estimating…" : "Run estimate"}
-            </button>
-          </div>
-        </>
-      )}
-      {step === "results" && result && (
-        <>
-          <section>
-            <div className="actions">
-              <h2>Results</h2>
-              <Mode mode={mode} setMode={setMode} />
-            </div>
-            {stale && (
-              <p className="notice">
-                Inputs have changed. These results describe the last completed
-                run; run the estimate again to update them.
-              </p>
-            )}
-            <p className="muted">
-              {benchmarkConfig &&
-              JSON.stringify(config) === JSON.stringify(benchmarkConfig)
-                ? "Imported local benchmark measurements"
-                : "Prediction / user-supplied metadata"}{" "}
-              · {result.config.hardware.name} ·{" "}
-              {result.config.training.script_gpu_count} active GPU(s)
-            </p>
-            <div className="result-grid">
-              <Metric
-                title="Training runtime"
-                value={number(result.training_hours, " h")}
-              />
-              <Metric
-                title="GPU time"
-                value={number(result.gpu_hours, " GPU-h")}
-              />
-              <Metric
-                title="Estimated GPU cost"
-                value={
-                  result.training_cost_usd === null
-                    ? "Unknown"
-                    : `$${result.training_cost_usd.toFixed(4)}`
-                }
-              />
-            </div>
-            <p className="muted">Timing source: {result.timing_source}</p>
-            {result.runtime_details?.scenarios && (
-              <p className="muted">
-                Planning scenarios:{" "}
-                {Object.entries(result.runtime_details.scenarios)
-                  .map(
-                    ([name, data]) =>
-                      `${name}: ${number(data.training_hours, " h")}`,
-                  )
-                  .join(" · ")}
-                . These are assumptions, not confidence bounds.
-              </p>
-            )}
-            <h3>Does the model fit?</h3>
-            <p className={result.gpu.fits === false ? "field-error" : ""}>
-              {result.gpu.fits === null
-                ? "Unknown — more memory metadata or a matching measurement is needed."
-                : result.gpu.fits
-                  ? "Within the selected memory limit; test on the actual GPU before a full run."
-                  : "Exceeds the selected per-GPU memory limit."}
-            </p>
-            <label>
-              VRAM · {number(result.gpu.peak_vram_gib, " GiB")} /{" "}
-              {number(result.gpu.capacity_gib, " GiB")} · {result.gpu.source}
-              <progress
-                aria-label="VRAM utilization"
-                max={100}
-                value={result.gpu.utilization_percent ?? 0}
-              />
-              {result.gpu.utilization_percent === null
-                ? "Usage unknown"
-                : `${result.gpu.utilization_percent.toFixed(1)}% of physical capacity`}{" "}
-              · usable limit {number(result.gpu.limit_gib, " GiB")}
-            </label>
-            <p>
-              CPU RAM: required <b>unknown</b> / available{" "}
-              {number(result.cpu.capacity_gib, " GiB")}. No CPU usage percentage
-              is invented.
-            </p>
-            <p>
-              {result.training_steps.toLocaleString()} microbatches per rank ·{" "}
-              {result.optimizer_updates.toLocaleString()} optimizer updates.
-            </p>
-            <details>
-              <summary>How we calculated this</summary>
-              <p>
-                Microbatches per rank = ceil(ceil(examples / active GPUs) /
-                per-GPU batch size) × epochs. Runtime = microbatches × matching
-                measured seconds per microbatch. Cost = hours × active GPUs ×
-                price per GPU-hour. Accumulation changes optimizer update count,
-                not the number of forward/backward microbatches.
-              </p>
-              <ul>
-                {result.assumptions.map((note) => (
-                  <li key={note}>{note}</li>
-                ))}
-              </ul>
-              {result.memory_details?.errors?.map((error) => (
-                <p className="field-error" key={error}>
-                  {error}
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={recommendationConsent}
+                    onChange={(event) =>
+                      setRecommendationConsent(event.target.checked)
+                    }
+                  />
+                  I approve sending cached source files and analysis metadata to
+                  the configured Nebius model provider. Paid API charges may
+                  apply.
+                </label>
+                <button
+                  disabled={
+                    busy ||
+                    !recommendationReady ||
+                    !recommendationConsent ||
+                    !files.length ||
+                    !recommendationPrompt.trim()
+                  }
+                  onClick={recommend}
+                >
+                  {busy
+                    ? "Working…"
+                    : "Generate code recommendations (paid API)"}
+                </button>
+                {proposal && (
+                  <div>
+                    <h3>Review proposed changes</h3>
+                    <p>{proposal.review.explanation}</p>
+                    {proposal.review.missing_information.map((item) => (
+                      <p key={item}>{item}</p>
+                    ))}
+                    {proposal.review.changed_files.map((file) => (
+                      <details key={file.path}>
+                        <summary>{file.path}</summary>
+                        <p>{file.reason}</p>
+                        <pre>{file.content}</pre>
+                      </details>
+                    ))}
+                    <div className="actions">
+                      <button
+                        className="secondary"
+                        onClick={() =>
+                          download("proposed_code_review.json", proposal)
+                        }
+                      >
+                        Download proposed files & review
+                      </button>
+                      <button
+                        disabled={busy || !proposal.review.changed_files.length}
+                        onClick={applyProposal}
+                      >
+                        Apply proposed files to page cache
+                      </button>
+                    </div>
+                    <p className="muted">
+                      Review full file contents before applying. This updates
+                      cached files only; it does not write to your repository,
+                      execute code, or validate model behavior.
+                    </p>
+                  </div>
+                )}
+              </details>
+            </section>
+            <section className="secondary-section">
+              <details>
+                <summary>Original run & current inputs</summary>
+                <p>
+                  The first successful run stays unchanged until refresh or New
+                  analysis. Uploaded source remains available in page memory for
+                  a recommendation/export bundle.
                 </p>
-              ))}
-              {result.memory_details?.warnings?.map((warning) => (
-                <p key={warning}>{warning}</p>
-              ))}
-              <button
-                className="secondary"
-                onClick={() =>
-                  download(
-                    "normalized_estimator_config.json",
-                    result.normalized,
-                  )
-                }
-              >
-                Download normalized estimator config
-              </button>
-            </details>
-          </section>
-          {mode === "benchmark" && (
-            <section>
-              <h2>Benchmark this workload</h2>
-              <p>
-                Requires a GPU and trusted training code. Cloud execution can
-                incur additional charges; inspect the prediction and cost
-                assumptions first.
-              </p>
-              <p>
-                Illustrative 60-second GPU-only benchmark cost:{" "}
-                <b>
-                  {result.benchmark.estimated_gpu_cost_usd === null
-                    ? "Unknown — enter a GPU-hour price"
-                    : `$${result.benchmark.estimated_gpu_cost_usd.toFixed(4)}`}
-                </b>
-                . {result.benchmark.note}
-              </p>
-              <h3>Run on Nebius</h3>
-              <button
-                disabled
-                title="Cloud job provisioning and billing authorization are not implemented"
-              >
-                Run benchmark on Nebius — unavailable
-              </button>
-              <p className="muted">
-                Cloud provisioning, billing consent, job isolation and
-                credentials still need integration. No paid service is called.
-              </p>
-              <h3>Run locally</h3>
-              <ol>
-                <li>
-                  Use a CUDA GPU with matching hardware and install your
-                  project’s PyTorch/dependencies locally.
-                </li>
-                <li>
-                  Keep your model script, training adapter, data sample and all
-                  project imports available. The training file must expose{" "}
-                  <code>build_benchmark(model_path, data_path)</code>, returning
-                  a no-argument callable for one complete training microbatch.
-                  It must match the exported config.
-                </li>
-                <li>
-                  Download the runner and current config. Inspect your scripts:
-                  the local runner executes your training adapter. It supports
-                  one GPU; distributed benchmarking requires a distributed
-                  runner.
-                </li>
-                <li>
-                  Run the command, review the report, then import it below. Only
-                  matching workload/configuration reports are accepted.
-                </li>
-              </ol>
-              <div className="actions">
-                <a className="button" href={benchmarkURL} download>
-                  Download benchmark script
-                </a>
+                {difference.length ? (
+                  <ul>
+                    {difference.map(([path, value]) => {
+                      const [group, key] = path.split(".");
+                      return (
+                        <li key={path}>
+                          {path}: original{" "}
+                          <code>
+                            {JSON.stringify(
+                              (
+                                original!.config[
+                                  group as "training"
+                                ] as unknown as Record<string, unknown>
+                              )[key],
+                            )}
+                          </code>{" "}
+                          → current <code>{JSON.stringify(value)}</code>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="muted">No changes from the original run.</p>
+                )}
                 <button
                   className="secondary"
-                  onClick={() => download("analysis_config.json", config)}
+                  onClick={() =>
+                    download("analysis_review_bundle.json", {
+                      original,
+                      current: { config, uploads: files, metadata },
+                      last_result: result,
+                    })
+                  }
                 >
-                  Download current config
+                  Download review / recommendation bundle
                 </button>
-              </div>
-              <pre>
-                python run_benchmark.py --model model_path --train training_path
-                --data_sample data --config analysis_config.json --output
-                benchmark.json
-              </pre>
-              <label className="upload">
-                Import completed benchmark report
-                <input
-                  aria-label="Import benchmark report"
-                  type="file"
-                  accept=".json"
-                  onChange={importBenchmark}
-                />
-              </label>
-            </section>
-          )}
-          <section>
-            <h2>Hardware comparison</h2>
-            <p className="muted">
-              Fits uses 90% of each card’s capacity. Measured memory is
-              configuration-specific; comparisons are indicative and require a
-              new benchmark on the selected hardware. Runtime and cost are not
-              transferable between GPUs.
-            </p>
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Platform / region</th>
-                    <th>Memory</th>
-                    <th>USD/GPU-hour</th>
-                    <th>Fit</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.comparison.map((offer) => (
-                    <tr key={offer.id}>
-                      <td>
-                        {offer.name}
-                        <br />
-                        <small>{offer.region}</small>
-                      </td>
-                      <td>{number(offer.vram_gib, " GiB")}</td>
-                      <td>${offer.price_per_gpu_hour}</td>
-                      <td>
-                        {offer.fits === null
-                          ? "Unknown"
-                          : offer.fits
-                            ? "Within limit"
-                            : "Exceeds limit"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-          <section>
-            <h2>Code recommendations · optional</h2>
-            <p>
-              Use the cached model/training files and original/current metadata
-              to request a proposed script update. Generated files require
-              review and testing. The provider request limit is 250 KB including
-              metadata.
-            </p>
-            {!recommendationReady && (
-              <p className="muted">
-                The model provider is not configured. Configure NEBIUS_API_KEY
-                and the OpenAI SDK on the backend to enable this optional
-                feature. Estimation and local benchmarks work independently.
-              </p>
-            )}
-            {!files.length && (
-              <p className="muted">
-                Upload source files on the workload step to enable code
-                recommendations.
-              </p>
-            )}
-            <label className="input-label">
-              Recommendation goal
-              <textarea
-                rows={3}
-                value={recommendationPrompt}
-                maxLength={10000}
-                onChange={(event) =>
-                  setRecommendationPrompt(event.target.value)
-                }
-              />
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={recommendationConsent}
-                onChange={(event) =>
-                  setRecommendationConsent(event.target.checked)
-                }
-              />
-              I approve sending cached source files and analysis metadata to the
-              configured Nebius model provider. Paid API charges may apply.
-            </label>
-            <button
-              disabled={
-                busy ||
-                !recommendationReady ||
-                !recommendationConsent ||
-                !files.length ||
-                !recommendationPrompt.trim()
-              }
-              onClick={recommend}
-            >
-              {busy ? "Working…" : "Generate code recommendations (paid API)"}
-            </button>
-            {proposal && (
-              <div>
-                <h3>Review proposed changes</h3>
-                <p>{proposal.review.explanation}</p>
-                {proposal.review.missing_information.map((item) => (
-                  <p key={item}>{item}</p>
-                ))}
-                {proposal.review.changed_files.map((file) => (
-                  <details key={file.path}>
-                    <summary>{file.path}</summary>
-                    <p>{file.reason}</p>
-                    <pre>{file.content}</pre>
-                  </details>
-                ))}
-                <div className="actions">
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      download("proposed_code_review.json", proposal)
-                    }
-                  >
-                    Download proposed files & review
-                  </button>
-                  <button
-                    disabled={busy || !proposal.review.changed_files.length}
-                    onClick={applyProposal}
-                  >
-                    Apply proposed files to page cache
-                  </button>
-                </div>
                 <p className="muted">
-                  Review full file contents before applying. This updates cached
-                  files only; it does not write to your repository, execute
-                  code, or validate model behavior.
+                  Includes uploaded source. Downloading this bundle does not
+                  call a model provider.
                 </p>
-              </div>
-            )}
-          </section>
-          <section>
-            <h2>Original run & current inputs</h2>
-            <p>
-              The first successful run stays unchanged until refresh or New
-              analysis. Uploaded source remains available in page memory for a
-              recommendation/export bundle.
-            </p>
-            {difference.length ? (
-              <ul>
-                {difference.map(([path, value]) => {
-                  const [group, key] = path.split(".");
-                  return (
-                    <li key={path}>
-                      {path}: original{" "}
-                      <code>
-                        {JSON.stringify(
-                          (
-                            original!.config[
-                              group as "training"
-                            ] as unknown as Record<string, unknown>
-                          )[key],
-                        )}
-                      </code>{" "}
-                      → current <code>{JSON.stringify(value)}</code>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="muted">No changes from the original run.</p>
-            )}
-            <button
-              className="secondary"
-              onClick={() =>
-                download("analysis_review_bundle.json", {
-                  original,
-                  current: { config, uploads: files, metadata },
-                  last_result: result,
-                })
-              }
-            >
-              Download review / recommendation bundle
-            </button>
-            <p className="muted">
-              Includes uploaded source. Downloading this bundle does not call a
-              model provider.
-            </p>
-          </section>
-          <div className="actions">
-            <button className="secondary" onClick={() => setStep("hardware")}>
-              ← Edit inputs
-            </button>
-            <button disabled={busy} onClick={estimate}>
-              {busy ? "Estimating…" : "Run estimate again"}
-            </button>
-          </div>
-        </>
-      )}
-      <footer>
-        Planning estimates are not guarantees. Optional inputs may remain empty;
-        unknown requirements stay unknown. No script execution or GPU allocation
-        occurs on this server.
-      </footer>
-    </main>
+              </details>
+            </section>
+            <div className="actions">
+              <button className="secondary" onClick={() => setStep("hardware")}>
+                ← Edit inputs
+              </button>
+              <button disabled={busy} onClick={estimate}>
+                {busy ? "Estimating…" : "Run estimate again"}
+              </button>
+            </div>
+          </>
+        )}
+        <footer>PyTorch only · Planning estimates are not guarantees.</footer>
+      </main>
+    </>
   );
 }
 function Mode({
