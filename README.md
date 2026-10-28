@@ -38,43 +38,6 @@ npm run dev
 
 Open http://localhost:5173 and click **Estimate resources**. Default output: 62,500 batches, 3.472 hours, $3.47. Frontend requests use Vite's /api proxy to reach Python. Keep both processes running. A package-lock.json is included; use npm ci for repeatable frontend installs.
 
-## Structure
-
-```text
-gpu-planner-starter/
-  frontend/
-    src/
-      components/       # Place for reusable UI components
-      api.js            # Backend HTTP requests
-      App.jsx           # Current form and results
-      main.jsx          # React entry point
-      styles.css
-    index.html
-    vite.config.js
-    package.json
-    package-lock.json
-  backend/
-    app/
-      main.py           # FastAPI application
-      routes.py         # HTTP endpoints
-      schemas.py        # Input/output validation
-      config.py         # Environment configuration
-      services/
-        estimation.py   # Memory, runtime and pricing together
-      clients/
-        nebius.py       # AI API placeholder
-        aws.py          # Cloud metadata/pricing placeholder
-    tests/test_api.py
-    .env.example
-    requirements.txt
-    requirements-dev.txt
-    README.md
-  .gitignore
-  README.md
-  TODO.md
-```
-
-Python package directories also contain `__init__.py`.
 
 ## Calculation assumptions
 
