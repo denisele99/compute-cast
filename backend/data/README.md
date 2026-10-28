@@ -17,3 +17,7 @@ This is currently optional if I want to take into account CPU, ram, SSD capacity
 // and included storage for an instance type.
 // GPU IDs reference hardware.json; provider prices belong in pricing.json.
 // Used to compare resource capacity across deployment options.
+
+
+fetched data 10/27/26
+nebius_spot_prices

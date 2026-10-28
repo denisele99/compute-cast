@@ -1,0 +1,173 @@
+{
+    "items": [
+        {
+            "skuId": "sku-e00agrh84hf7fwlrgsfsv",
+            "productTitle": "Preemptible NVIDIA\u00ae H200 NVLink",
+            "region": "eu-north1",
+            "computeInstance": {
+                "platform": "gpu-h200-sxm"
+            },
+            "price": {
+                "value": "2.2",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T19:06:00Z"
+        },
+        {
+            "skuId": "sku-e00ljkedv5qtbwhikuoct",
+            "productTitle": "Preemptible NVIDIA\u00ae H100 NVLink",
+            "region": "eu-north1",
+            "computeInstance": {
+                "platform": "gpu-h100-sxm"
+            },
+            "price": {
+                "value": "0.79",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T22:06:00Z"
+        },
+        {
+            "skuId": "sku-e00g61h0323jih8tkg5jv",
+            "productTitle": "Preemptible NVIDIA\u00ae RTX PRO 6000",
+            "region": "eu-south1",
+            "computeInstance": {
+                "platform": "gpu-rtx6000-a"
+            },
+            "price": {
+                "value": "0.79",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T23:01:00Z"
+        },
+        {
+            "skuId": "sku-e00dh1moiqg9mc5ix6wj2",
+            "productTitle": "Preemptible NVIDIA\u00ae H200 NVLink",
+            "region": "eu-west1",
+            "computeInstance": {
+                "platform": "gpu-h200-sxm"
+            },
+            "price": {
+                "value": "4.19",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T23:51:00Z"
+        },
+        {
+            "skuId": "sku-e00vd4x28cozliwb6g4vh",
+            "productTitle": "Preemptible NVIDIA\u00ae B300 NVLink",
+            "region": "eu-west2",
+            "computeInstance": {
+                "platform": "gpu-b300-sxm"
+            },
+            "price": {
+                "value": "9.49",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T10:41:00Z"
+        },
+        {
+            "skuId": "sku-e00k58wq19wjszct65fwm",
+            "productTitle": "Preemptible NVIDIA\u00ae B200 NVLink",
+            "region": "me-west1",
+            "computeInstance": {
+                "platform": "gpu-b200-sxm-a"
+            },
+            "price": {
+                "value": "5.3",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T23:36:00Z"
+        },
+        {
+            "skuId": "sku-e00fmto201j24eyp0841g",
+            "productTitle": "Preemptible NVIDIA\u00ae B300 NVLink",
+            "region": "uk-south1",
+            "computeInstance": {
+                "platform": "gpu-b300-sxm"
+            },
+            "price": {
+                "value": "5.2",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T23:36:00Z"
+        },
+        {
+            "skuId": "sku-e00lxawt0lavf9i0dutiz",
+            "productTitle": "Preemptible NVIDIA\u00ae RTX PRO 6000",
+            "region": "uk-south2",
+            "computeInstance": {
+                "platform": "gpu-rtx6000-a"
+            },
+            "price": {
+                "value": "0.79",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T23:01:00Z"
+        },
+        {
+            "skuId": "sku-e00em8l461xmyihec7sr8",
+            "productTitle": "Preemptible NVIDIA\u00ae H200 NVLink",
+            "region": "us-central1",
+            "computeInstance": {
+                "platform": "gpu-h200-sxm"
+            },
+            "price": {
+                "value": "1.3",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T23:31:00Z"
+        },
+        {
+            "skuId": "sku-e00fjjc4gwdx48pck9b46",
+            "productTitle": "Preemptible NVIDIA\u00ae B200 NVLink",
+            "region": "us-central1",
+            "computeInstance": {
+                "platform": "gpu-b200-sxm"
+            },
+            "price": {
+                "value": "4.8",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T22:36:00Z"
+        },
+        {
+            "skuId": "sku-e00otwkvc6gea6nmvvsda",
+            "productTitle": "Preemptible NVIDIA\u00ae RTX PRO 6000",
+            "region": "us-central1",
+            "computeInstance": {
+                "platform": "gpu-rtx6000"
+            },
+            "price": {
+                "value": "0.79",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T22:21:00Z"
+        },
+        {
+            "skuId": "sku-e00hfg6dlxtt9ji6fqo9u",
+            "productTitle": "Preemptible NVIDIA\u00ae B300 NVLink",
+            "region": "us-north1",
+            "computeInstance": {
+                "platform": "gpu-b300-sxm"
+            },
+            "price": {
+                "value": "1.25",
+                "currency": "usd",
+                "unitTitle": "GPU hour"
+            },
+            "effectiveTime": "2026-10-27T23:01:00Z"
+        }
+    ],
+    "snapshotTime": "2026-10-27T23:49:42.880948Z"
+}
