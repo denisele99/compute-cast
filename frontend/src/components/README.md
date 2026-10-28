@@ -1,4 +1,3 @@
 # Components
 
-Extract reusable form fields, GPU cards and result panels here as the UI grows.
-The initial interface lives in App.jsx to keep the starter small.
+The planner currently keeps the guided flow in `src/App.tsx` so the user path is easy to follow. Shared field, metric, and stepper pieces are defined alongside the flow and can be extracted when they gain additional call sites.
