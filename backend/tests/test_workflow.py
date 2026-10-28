@@ -166,3 +166,30 @@ class WorkflowTests(unittest.TestCase):
         for expression in ('{1, 2}', 'b"hello"', '1j'):
             parsed = self.parse([{'name': 'train.py', 'content': 'batch_size = ' + expression}])
             self.assertIn('training.batch_size', parsed['uncertain'])
+
+    def test_recommendations_require_explicit_consent_before_provider_access(self):
+        from unittest.mock import patch
+        payload = {'prompt': 'Review training', 'files': {'train.py': 'batch_size=8'}, 'context': {}}
+        with patch('app.api.routes.recommender.recommend') as provider:
+            response = self.client.post('/api/recommendations', json=payload)
+            self.assertEqual(response.status_code, 403)
+            provider.assert_not_called()
+
+    def test_cached_source_reaches_existing_recommender_only_after_consent(self):
+        from unittest.mock import patch
+        payload = {'prompt': 'Review training', 'files': {'train.py': 'batch_size=8'},
+                   'context': {'original': {'batch_size': 16}, 'current': {'batch_size': 8}},
+                   'consent_to_paid_request': True}
+        with patch('app.api.routes.recommender.recommendation_status', return_value={'configured': True}), \
+             patch('app.api.routes.recommender.recommend', return_value={'review': {'changed_files': []}}) as provider:
+            response = self.client.post('/api/recommendations', json=payload)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(provider.call_args.kwargs['files'], payload['files'])
+            self.assertEqual(provider.call_args.kwargs['context'], payload['context'])
+
+    def test_recommendation_status_never_exposes_key(self):
+        from unittest.mock import patch
+        with patch.dict('os.environ', {'NEBIUS_API_KEY': 'not-a-real-secret-for-status-test'}):
+            response = self.client.get('/api/recommendations/status')
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn('not-a-real-secret-for-status-test', response.text)

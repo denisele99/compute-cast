@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import importlib.util
 
 from fastapi import APIRouter, HTTPException
 try:
@@ -22,6 +24,7 @@ router = APIRouter(
 
 
 class RecommendationRequest(BaseModel):
+    consent_to_paid_request: bool = False
     prompt: str = Field(min_length=1, max_length=10_000)
 
     # Relative filename -> complete file contents
@@ -31,8 +34,18 @@ class RecommendationRequest(BaseModel):
     context: dict = Field(default_factory=dict)
 
 
+@router.get("/status")
+def recommendation_status():
+    return {"configured": bool(os.getenv("NEBIUS_API_KEY")) and importlib.util.find_spec("openai") is not None,
+            "note": "Uses the configured Nebius model provider. Source files are sent only after explicit consent; provider charges may apply."}
+
+
 @router.post("")
 async def create_recommendations(request: RecommendationRequest):
+    if not request.consent_to_paid_request:
+        raise HTTPException(403, "Explicit consent to send source to the paid model provider is required.")
+    if not recommendation_status()["configured"]:
+        raise HTTPException(503, "Recommendations need the OpenAI SDK and NEBIUS_API_KEY configured on the backend. No provider request was sent.")
     # Check user inputs before making a paid API request.
     try:
         if not request.prompt.strip() or not request.files:

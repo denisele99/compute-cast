@@ -4,8 +4,8 @@ Branch: `feature/connected-estimation-workflow`. Target: `main`.
 
 ## Implemented
 
-- Restored FastAPI startup by removing a nonexistent recommendations import and pointing the existing estimator route at its actual implementation. Legacy API contracts remain covered by their original tests.
-- Explicitly load the TypeScript app. Vite previously resolved the old `App.jsx` before `App.tsx`.
+- Rebased onto current `main`, corrected the latest API router imports and restored the legacy calculation behind the original endpoint. Newer backend estimator/parser directories and frontend helper/page modules are retained. Legacy contracts remain covered by their original tests.
+- Explicitly load the TypeScript app. The starting snapshot contained conflicting legacy JS entrypoints; current main also removes those old files.
 - Added a connected workload → hardware → results flow, advanced settings, field validation, required/optional labels, grey defaults, red extraction uncertainty and upload review confirmation.
 - Python AST and safe JSON/YAML parsing populate the same typed form used by manual input. The server never imports uploaded code and does not save uploads. Conflicting, dynamic or invalid extracted values require review. Upload limits: 8 files, 250 KB per file, 1 MB combined.
 - Cache uploads and metadata only in page memory. Save immutable original metadata on the first successful run; compare subsequent inputs and export original/current configuration and source in a review/recommendation bundle. Refresh, close, or New analysis discards the in-memory cache.
@@ -33,10 +33,12 @@ Branch: `feature/connected-estimation-workflow`. Target: `main`.
 - Arbitrary Python model construction is not executed during upload. Static parsing cannot reliably infer all parameter counts, tensor shapes or runtime behavior. Dynamic/unsupported model metadata requires manual review or a trusted external collection step.
 - Metadata-only runtime reuses the existing runtime planner when users supply per-microbatch forward/backward FLOPs and HBM traffic, GPU compute/bandwidth specifications, and an explicit data-ready assumption. Multi-GPU runtime also needs effective link bandwidth. The UI reports fast/slow planning scenarios and uses the slow scenario for displayed cost; these are not statistical bounds. Missing data produces unknown total runtime. No timing is transferred between GPUs in comparisons.
 - CPU RAM/SSD/NVMe capacities are saved, but CPU demand, disk throughput and offload planning are not inferred from capacity alone. No percentage is fabricated for unknown requirements.
-- Cached source is available in the recommendation bundle; generating and applying AI code recommendations is not connected in this workflow.
+- Code recommendations use the existing Nebius provider endpoint only after explicit source-sharing/paid-request consent. Cached source and original/current metadata are sent on request; proposed files can be reviewed, downloaded and applied to the page cache for re-parsing. This optional integration requires backend NEBIUS_API_KEY, the OpenAI SDK and HTTPS access to api.tokenfactory.nebius.com. Live provider calls were not tested and no charge was incurred. Generated changes are never executed or written to the repository automatically.
 - Prices are the provided dated spot snapshots, not live quotes. Refresh/enrich catalogue data separately if all listed offers need verified memory specs.
 
 ## Validation
+
+Validated after rebasing onto `main` at `6e97fff`: 27 backend tests, 5 retained frontend unit tests, a production build, and 7 connected browser tests against the production build. The code-recommendation provider boundary is mocked in its browser test. GPU execution and paid provider requests were not run. The newer main introduced Node-based TypeScript tests; adding Node type definitions restores their inclusion in the production type check.
 
 Run backend tests from `backend`:
 

@@ -56,7 +56,11 @@ assumptions. Parameter count alone cannot establish full peak memory or fit.
 
 Uploads, the immutable first-run snapshot and current inputs live only in page
 memory. Refresh, close or New analysis clears them. The review/recommendation
-bundle download includes uploaded source files.
+bundle download includes uploaded source files. Optional code recommendations can
+send cached source to the existing Nebius model provider after explicit consent;
+paid API charges may apply. This needs the OpenAI SDK and NEBIUS_API_KEY on the
+backend. Proposed files are reviewed and applied only to the page cache, never
+automatically executed or written into the repository.
 
 ## Local benchmark
 

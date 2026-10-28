@@ -16,3 +16,4 @@ __pycache__/
 *.py[cod]
 frontend/test-results/
 frontend/playwright-report/
+frontend/dist/
