@@ -17,3 +17,5 @@ __pycache__/
 frontend/test-results/
 frontend/playwright-report/
 frontend/dist/
+backend/data/hardware_catalog.downloaded.json
+backend/data/hardware_catalog.downloaded.LICENSE.txt

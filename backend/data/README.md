@@ -21,3 +21,10 @@ This is currently optional if I want to take into account CPU, ram, SSD capacity
 
 fetched data 10/27/26
 nebius_spot_prices
+
+## Downloading GPU specifications
+
+See [the hardware catalogue downloader](../scripts/HARDWARE_CATALOG.md). Run
+`python backend/scripts/download_hardware_catalog.py` from the repository root to
+create a separate, reviewable JSON catalogue without pricing. Existing curated
+entries are preserved. Imported community entries require datasheet review.
