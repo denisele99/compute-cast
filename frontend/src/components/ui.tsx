@@ -133,3 +133,20 @@ export function MemoryBar({ used, usable, total, label }: { used: number; usable
     <div className="mt-1 flex justify-between text-[10px] text-[#8e899b]"><span>0 GiB</span><span>▲ usable limit {usable.toFixed(1)} GiB</span><span>{total ? `total ${total.toFixed(1)} GiB` : ''}</span></div>
   </div>;
 }
+
+/** Large two-or-more-way switch (segmented control) for choosing a mode; each option can carry a short description. */
+export function ModeToggle<T extends string>({ label, value, onChange, options }: {
+  label: string; value: T; onChange: (v: T) => void; options: { id: T; title: string; description?: string; icon?: LucideIcon }[];
+}): JSX.Element {
+  return <div role="radiogroup" aria-label={label} className={`grid gap-1 border border-line bg-black/40 p-1 ${options.length === 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'}`}>
+    {options.map(({ id, title, description, icon: Icon }) => {
+      const on = value === id;
+      return <button key={id} type="button" role="radio" aria-checked={on} onClick={() => onChange(id)}
+        className={`flex items-start gap-3 px-4 py-3 text-left transition ${on ? 'bg-violet text-white shadow-glow' : 'text-[#a7a0bb] hover:bg-white/5 hover:text-white'}`}>
+        {Icon && <Icon size={20} className="mt-0.5 shrink-0" aria-hidden />}
+        <span className="min-w-0"><span className="block text-base font-semibold sm:text-lg">{title}</span>
+          {description && <span className={`mt-0.5 block text-xs ${on ? 'text-white/85' : 'text-[#8e899b]'}`}>{description}</span>}</span>
+      </button>;
+    })}
+  </div>;
+}

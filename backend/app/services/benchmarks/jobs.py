@@ -18,6 +18,8 @@ from .store import TERMINAL, AllowanceExceeded, ConcurrencyLimit, dumps
 log = logging.getLogger('compute_cast.bench')
 GLOBAL_KEY = 'global'
 RECONCILE_AFTER_SECONDS = 60
+# A bucket-mounted results.json can be read before the mount has finished uploading it (empty or truncated).
+RESULTS_SETTLE_SECONDS = 120
 
 
 class JobError(Exception):
@@ -33,6 +35,7 @@ def provider_name(job_id):
 class JobService:
     def __init__(self, store, policy, client, result_store, clock=time.time):
         self.store, self.policy, self.client, self.result_store, self.clock = store, policy, client, result_store, clock
+        self._collecting_since = {}  # job id -> first time an unreadable results.json was seen (process-local)
         store.ensure_allowance(GLOBAL_KEY, policy.global_allowance_usd)
 
     # -- helpers ----------------------------------------------------------------------------
@@ -186,6 +189,14 @@ class JobService:
                                 f'Provider state {status.state}{detail}; no results.json was written. {status.message}'.strip()}, **fields)
         try:
             parsed = RS.parse(raw)
+        except RS.ResultDecodeError as exc:
+            since = self._collecting_since.setdefault(job['id'], now)
+            if now - since < RESULTS_SETTLE_SECONDS:
+                return self.store.update_job(job['id'], state='collecting', **{
+                    **fields, 'provider_message': f'Waiting for results.json to finish uploading ({exc})'[:300]})
+            self._collecting_since.pop(job['id'], None)
+            return self._finish(job, 'failed', charge, error={'type': 'invalid_results', 'message':
+                                f'{exc} The file was still unreadable {RESULTS_SETTLE_SECONDS} s after the job finished.'}, **fields)
         except RS.ResultError as exc:
             return self._finish(job, 'failed', charge, error={'type': 'invalid_results', 'message': str(exc)}, **fields)
         if parsed['config_fingerprint'] and parsed['config_fingerprint'] != job['fingerprint']:
@@ -205,6 +216,7 @@ class JobService:
         return seconds / 3600 * self.policy.reservation_usd_per_gpu_hour
 
     def _finish(self, job, state, charged, error=None, results=None, **fields):
+        self._collecting_since.pop(job['id'], None)
         extra = dict(fields)
         if error is not None:
             extra['error_json'] = dumps(error)

@@ -25,7 +25,9 @@ timing, and what started_at/finished_at cover relative to billing.
 """
 from __future__ import annotations
 
+import gzip
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
@@ -169,6 +171,34 @@ class NebiusSDKClient:
         self._service().cancel(CancelJobRequest(id=provider_job_id), **CALL_LIMIT).wait()
 
 
+_CHUNK_HEADER = re.compile(rb'^([0-9a-fA-F]+)(;[^\r\n]*)?\r\n')
+
+
+def unwrap_object(data: bytes, content_encoding: str = '') -> bytes:
+    """Undo transport framing an S3-compatible store may leave in the object body.
+
+    Recent boto3/AWS SDKs upload with ``aws-chunked`` encoding (``<hex>;chunk-signature=...\\r\\n<data>\\r\\n``) and
+    some non-AWS stores keep that framing in the stored object; objects may also be stored gzip-compressed.
+    Plain JSON is returned unchanged.
+    """
+    if data[:2] == b'\x1f\x8b' or 'gzip' in content_encoding:
+        try:
+            data = gzip.decompress(data)[:256 * 1024 + 1]
+        except (OSError, EOFError):
+            return data
+    if not _CHUNK_HEADER.match(data):
+        return data
+    out, rest = bytearray(), data
+    while (m := _CHUNK_HEADER.match(rest)):
+        size = int(m.group(1), 16)
+        if size == 0:
+            return bytes(out)
+        start = m.end()
+        out += rest[start:start + size]
+        rest = rest[start + size:].removeprefix(b'\r\n')
+    return bytes(out) if not rest.strip() else data
+
+
 class S3ResultStore:
     """Reads <prefix>/<job id>/results.json from the results bucket with a read-only S3 key (boto3)."""
 
@@ -177,12 +207,16 @@ class S3ResultStore:
 
     def fetch_results(self, source_path):
         import boto3
+        from botocore.config import Config
         from botocore.exceptions import ClientError
-        s3 = boto3.client('s3', endpoint_url=self.policy.s3_endpoint, region_name=self.policy.s3_region,
+        # Non-AWS S3 endpoints: only send/validate checksums when the API requires them.
+        config = Config(request_checksum_calculation='when_required', response_checksum_validation='when_required',
+                        retries={'max_attempts': 3, 'mode': 'standard'})
+        s3 = boto3.client('s3', endpoint_url=self.policy.s3_endpoint, region_name=self.policy.s3_region, config=config,
                           aws_access_key_id=self.policy.s3_access_key_id, aws_secret_access_key=self.policy.s3_secret_access_key)
         try:
-            body = s3.get_object(Bucket=self.policy.results_bucket_name, Key=f'{source_path}/results.json')['Body']
-            return body.read(256 * 1024 + 1)
+            obj = s3.get_object(Bucket=self.policy.results_bucket_name, Key=f'{source_path}/results.json')
+            return unwrap_object(obj['Body'].read(256 * 1024 + 1), obj.get('ContentEncoding') or '')
         except ClientError as exc:
             if exc.response.get('Error', {}).get('Code') in ('NoSuchKey', '404'):
                 return None

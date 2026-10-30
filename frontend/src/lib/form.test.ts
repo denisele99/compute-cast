@@ -65,8 +65,7 @@ test('checkpoint dimensions are locked unless custom mode is on', () => {
   assert.equal(lockReason('model.num_layers', 'custom_only', setManual({}, 'model.num_layers', 6), {}), null);
   const hw = applyCatalogue({}, { 'hardware.vram_gib': 80, 'hardware.bf16_dense_tflops': 989 }, 'H100').form;
   assert.equal(lockReason('hardware.vram_gib', true, hw, {}), null);  // VRAM stays editable
-  assert.ok(lockReason('hardware.bf16_dense_tflops', true, hw, {}));
-  assert.equal(lockReason('hardware.bf16_dense_tflops', true, hw, { 'hardware.source': 'custom' }), null);
+  assert.equal(lockReason('hardware.bf16_dense_tflops', true, hw, {}), null);  // catalogue specs can be customised freely
 });
 
 test('fit classification', () => {

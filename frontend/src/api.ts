@@ -92,7 +92,13 @@ export type OptionSummary = { id: string; provider: 'nebius' | 'catalog'; platfo
 export type AdvicePrefs = { goal: 'shortest_time' | 'lowest_cost' | 'reduce_memory' | 'highest_throughput' | 'balanced'; resources: 'current' | 'alternatives';
   preserve_effective_batch: boolean; preserve_precision: boolean; preserve_sequence_length: boolean; preserve_training_method: boolean;
   budget_usd: number | null; max_gpus: number | null; notes: string };
+export type AdviceStrategy = { data_parallel: number; tensor_parallel: number; pipeline_parallel: number; gpu_count: number;
+  sharding: 'none' | 'zero1' | 'zero2' | 'zero3' | 'fsdp'; activation_checkpointing: 'none' | 'selective' | 'full'; attention: 'math' | 'flash' };
+export type StrategyProjection = { status: 'ok'; approximate: true; strategy: AdviceStrategy; per_gpu_capacity_gib: number; allocated_peak_gib: number; usable_vram_gib: number;
+  percent_of_usable: number; fits: boolean; memory_gib: Record<string, number>; training_hours: number | null; cost_usd: number | null; gpu_count: number;
+  efficiency: number; compute_overhead: number; global_effective_batch: number; optimizer_updates: number | null; assumptions: string[] };
 export type AdviceRec = { id: string; title: string; category: string; explanation: string; parameter_changes: Record<string, number>; hardware_option_id: string | null;
+  strategy?: AdviceStrategy | null; projection?: StrategyProjection | null; implementation_steps?: string[]; launch_snippet?: string;
   hardware: { id: string; label: string; region: string | null; cost_usd: number | null; training_hours: number | null } | null; expected_effect: string; tradeoffs: string[];
   affected_files: string[]; issues: string[]; violations: string[]; estimable: boolean; applicable: boolean; new_values: Values; estimate_note: string | null };
 export type Advice = { model: string; original_summary: string; suggestions_summary: string; recommendations: AdviceRec[];

@@ -77,7 +77,13 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   expect(await f('hardware.usable_vram_gib').inputValue() === '54', 'usable limit follows total VRAM until edited');
   await f('hardware.vram_gib').fill('80');
   await page.waitForTimeout(900);
-  expect(await f('hardware.bf16_dense_tflops').isDisabled(), 'catalogue specs locked unless Custom GPU');
+  expect(!(await f('hardware.bf16_dense_tflops').isDisabled()), 'catalogue specs stay editable without choosing Custom GPU');
+  const tflops = await f('hardware.bf16_dense_tflops').inputValue();
+  await f('hardware.bf16_dense_tflops').fill('500');
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: /restore .* specs/ }).click();
+  await page.waitForTimeout(900);
+  expect(await f('hardware.bf16_dense_tflops').inputValue() === tflops, 'restoring the GPU replaces edited specs (no frozen fields)');
   expect(await f('hardware.price_unit').inputValue() === 'gpu_hour', 'price unit autofilled');
   await page.screenshot({ path: path.join(shots, '02-hardware.png'), fullPage: true });
   await page.getByRole('button', { name: 'Run estimate' }).click();
@@ -98,7 +104,9 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   expect(/16·P/.test(how) && /Your numbers/i.test(how) && /optimizer updates ×/.test(how), 'equations with your numbers under How we calculated this');
   await page.screenshot({ path: path.join(shots, '03-results.png'), fullPage: true });
 
-  await page.getByRole('tab', { name: 'Benchmark' }).click();
+  await page.getByRole('radio', { name: /Benchmark mode/ }).click();
+  expect(await page.getByRole('radio', { name: /Nebius AI Cloud/ }).getAttribute('aria-checked') === 'true', 'Nebius AI Cloud is the default benchmark target');
+  await page.getByRole('radio', { name: /Your GPU/ }).click();
   await page.getByText('Review benchmark setup', { exact: true }).waitFor({ timeout: 20000 });
   expect(await page.getByRole('button', { name: /Show setup/ }).getAttribute('aria-expanded') === 'false', 'benchmark setup collapsed by default');
   await page.getByRole('button', { name: /Show setup/ }).click();
@@ -134,7 +142,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   log('ok - malformed results rejected');
   await page.screenshot({ path: path.join(shots, '04-benchmark-local.png'), fullPage: true });
 
-  await page.getByRole('tab', { name: 'Nebius AI Cloud' }).click();
+  await page.getByRole('radio', { name: /Nebius AI Cloud/ }).click();
   if (process.env.E2E_BENCH_PASSWORD) {
     // Backend started with BENCH_CLOUD_ENABLED=1 BENCH_NEBIUS_BACKEND=fake (simulated provider, no Nebius calls).
     await page.getByText(/simulated provider/i).first().waitFor({ timeout: 10000 });
@@ -159,7 +167,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
     log('ok - cloud benchmarks shown unavailable (set E2E_BENCH_PASSWORD with a fake-backend server to test login/submit)');
   }
 
-  await page.getByRole('tab', { name: 'Estimate' }).click();
+  await page.getByRole('radio', { name: /Estimate mode/ }).click();
   await page.getByRole('button', { name: 'Edit inputs' }).click();
   await f('training.microbatch_size').fill('16');
   await page.waitForTimeout(700);
@@ -183,7 +191,15 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
         new_values: { 'training.microbatch_size': 8, 'training.gradient_accumulation_steps': 8 }, estimate_note: null },
       { id: 'ckpt', title: 'Activation checkpointing', category: 'activation_checkpointing', explanation: 'Recompute activations in backward.', parameter_changes: {},
         hardware_option_id: null, hardware: null, expected_effect: 'Much less activation memory.', tradeoffs: ['~30% more compute'], affected_files: [], issues: [], violations: [],
-        estimable: false, applicable: false, new_values: {}, estimate_note: 'Not estimated: this tool models single-GPU batch, sequence and hardware changes only.' }],
+        estimable: false, applicable: false, new_values: {}, estimate_note: 'Not estimated: this tool models single-GPU batch, sequence and hardware changes only.' },
+      { id: 'zero', title: 'ZeRO-2 across 4 GPUs with checkpointing', category: 'combined', explanation: 'Shard optimizer state and gradients; recompute activations.', parameter_changes: {},
+        hardware_option_id: null, hardware: null, expected_effect: 'About 3.5x shorter run.', tradeoffs: ['Needs 4 GPUs'], affected_files: [], issues: [], violations: [],
+        strategy: { data_parallel: 4, tensor_parallel: 1, pipeline_parallel: 1, gpu_count: 4, sharding: 'zero2', activation_checkpointing: 'full', attention: 'math' },
+        projection: { status: 'ok', approximate: true, per_gpu_capacity_gib: 5.1, allocated_peak_gib: 3.9, usable_vram_gib: 72, percent_of_usable: 7, fits: true,
+          memory_gib: { training_state: 0.9 }, training_hours: 0.04, cost_usd: 0.4, gpu_count: 4, efficiency: 0.92, compute_overhead: 1.33, global_effective_batch: 64,
+          optimizer_updates: 100, assumptions: ['Approximate projection.'] },
+        implementation_steps: ['Wrap the model with DeepSpeed ZeRO-2'], launch_snippet: 'deepspeed --num_gpus 4 train.py',
+        estimable: false, applicable: false, new_values: {}, estimate_note: 'Approximate projection.' }],
     changed_files: [], files_check: null, assumptions: [], missing_information: [], files_reviewed: ['train.py', 'train_baseline.py'], note: 'AI suggestions are unverified.' } }); });
   await page.route('**/api/analysis/*/advice/apply', (r) => r.fulfill({ json: { applied: {}, original_kept: true } }));
   await page.getByRole('button', { name: 'Improve this plan' }).click();
@@ -199,6 +215,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
     && adviceBody.values['training.microbatch_size'] === 16, 'request carries goal, resources, extra code and final values');
   const recs = await page.locator('main').innerText();
   expect(/Suggested changes/.test(recs) && /not estimated/i.test(recs), 'summaries and not-estimated label shown');
+  expect(/Approximate projection/i.test(recs) && /4 GPUs/i.test(recs) && /ZeRO-2/i.test(recs) && /deepspeed --num_gpus 4/.test(recs), 'strategy plan shows its approximate projection, steps and launch snippet');
   await page.getByRole('button', { name: 'Recalculate estimate' }).first().click();
   await page.getByText('Recalculated vs your original estimate').waitFor({ timeout: 20000 });
   await page.screenshot({ path: path.join(shots, '06-recommendations.png'), fullPage: true });

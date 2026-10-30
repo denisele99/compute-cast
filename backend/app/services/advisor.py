@@ -8,8 +8,10 @@ Inputs sent to the model (all data, never instructions):
 
 The model must answer with one JSON object (``Advice``). It is validated strictly; every proposed
 parameter change is re-checked here against the input schema and the user's constraints, and only
-single-GPU changes the estimator can model are marked ``estimable``. Sharding, tensor/pipeline
-parallelism and multi-GPU ideas are returned as qualitative, "not estimated" advice.
+single-GPU changes the estimator can model are marked ``estimable``. Multi-technique plans (activation
+checkpointing, flash attention, ZeRO/FSDP sharding, data/tensor/pipeline parallelism, combined with
+batch/accumulation tuning) carry a structured ``strategy`` and get an approximate projection from
+``estimators.strategy`` (labelled approximate, never applied to the single-GPU estimate).
 Nothing is executed. Requires NEBIUS_API_KEY (a Token Factory key) on the server.
 """
 from __future__ import annotations
@@ -22,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..parsers import gpt2_inputs as G
 from .estimators import gpt2_predict
+from .estimators import strategy as ST
 from .recommender import DEFAULT_MODEL, FileChange, safe_path, validate_review
 
 MODEL_LABEL = 'NVIDIA Nemotron 3 Super (nvidia/nemotron-3-super-120b-a12b) via Nebius Token Factory'
@@ -31,15 +34,28 @@ GOALS = {'shortest_time': 'shortest training time', 'lowest_cost': 'lowest cost'
 ESTIMABLE_KEYS = ('training.microbatch_size', 'training.gradient_accumulation_steps', 'data.sequence_length',
                   'training.optimizer_updates', 'training.num_epochs')
 CATEGORIES = ('batch_accumulation', 'sequence_length', 'hardware', 'precision', 'activation_checkpointing',
-              'attention', 'data_parallel', 'sharding', 'tensor_parallel', 'pipeline_parallel', 'data_loading', 'other')
+              'attention', 'data_parallel', 'sharding', 'tensor_parallel', 'pipeline_parallel', 'data_loading',
+              'combined', 'other')
 NOT_ESTIMABLE_CATEGORIES = {'precision', 'activation_checkpointing', 'attention', 'data_parallel', 'sharding',
-                            'tensor_parallel', 'pipeline_parallel', 'data_loading', 'other'}
+                            'tensor_parallel', 'pipeline_parallel', 'data_loading', 'combined', 'other'}
+MULTI_GPU_CATEGORIES = ('data_parallel', 'sharding', 'tensor_parallel', 'pipeline_parallel')
 MAX_FILES_BYTES = 200_000
 MAX_CANDIDATES = 6
 
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
+
+
+class Strategy(Strict):
+    """Distributed / memory-saving setup. Degrees multiply to the GPU count; values are per GPU / per replica."""
+    data_parallel: int = Field(default=1, ge=1, le=1024)
+    tensor_parallel: int = Field(default=1, ge=1, le=64)
+    pipeline_parallel: int = Field(default=1, ge=1, le=128)
+    sharding: Literal[ST.SHARDING] = 'none'                      # type: ignore[valid-type]
+    activation_checkpointing: Literal[ST.CHECKPOINTING] = 'none'  # type: ignore[valid-type]
+    attention: Literal[ST.ATTENTION] = 'math'                     # type: ignore[valid-type]
+    framework: str = Field(default='', max_length=80)              # e.g. "PyTorch FSDP", "DeepSpeed ZeRO-2", "Megatron-LM"
 
 
 class Suggestion(Strict):
@@ -49,6 +65,9 @@ class Suggestion(Strict):
     explanation: str = Field(max_length=2000)
     parameter_changes: dict[str, int] = Field(default_factory=dict)   # form keys from ESTIMABLE_KEYS
     hardware_option_id: str | None = None                             # one of the supplied candidates
+    strategy: Strategy | None = None                                  # multi-technique / multi-GPU plan
+    implementation_steps: list[str] = Field(default_factory=list, max_length=10)
+    launch_snippet: str = Field(default='', max_length=4000)          # launch command or framework config
     expected_effect: str = Field(max_length=500)
     tradeoffs: list[str]
     affected_files: list[str]
@@ -89,10 +108,21 @@ Produce the best changes for the user's goal given the hardware:
   If preserve_sequence_length is true, do not change data.sequence_length.
 * hardware_option_id: only an id from hardware_candidates, only when resources == "alternatives",
   and only if it respects budget_usd. Explain why it helps the goal using the supplied estimates.
-* Advanced methods (activation checkpointing, FSDP/ZeRO sharding, DDP, tensor/pipeline parallelism,
-  attention kernels, precision changes, data loading) go in their category with empty parameter_changes;
-  they are NOT estimated by this tool, say so. Respect preserve_precision and preserve_training_method.
-  Recommend multi-GPU methods only if max_gpus allows more than one GPU.
+* Advanced plans are encouraged when they serve the goal: activation checkpointing (selective/full),
+  flash attention, ZeRO-1/2/3 or FSDP sharding, data parallelism (DDP), tensor and pipeline parallelism,
+  and combinations of them with batch/accumulation tuning (category "combined" for multi-technique plans).
+  Describe them in `strategy`: data_parallel x tensor_parallel x pipeline_parallel = GPU count (must not
+  exceed max_gpus; treat a missing max_gpus as 1), sharding, activation_checkpointing, attention, framework.
+  With a strategy, parameter_changes give the PER-GPU microbatch and the PER-REPLICA accumulation; the global
+  effective batch is microbatch x accumulation x data_parallel. tensor_parallel must divide the attention heads
+  and hidden size; pipeline stages must not exceed the layers; sharding needs data_parallel >= 2.
+  Typical uses: checkpointing to afford a larger microbatch with less accumulation; ZeRO/FSDP when training
+  state dominates memory; DP to cut wall-clock time; TP/PP only when one GPU cannot hold the model.
+  The tool projects strategies approximately (rule-of-thumb factors) and labels them as such.
+* implementation_steps: 2-6 concrete steps (code/config changes). launch_snippet: the launch command and/or
+  framework config (torchrun / accelerate / DeepSpeed JSON / FSDP args) when it helps; else empty.
+* Precision and data-loading changes have no strategy field; describe them qualitatively.
+  Respect preserve_precision and preserve_training_method.
 * Never invent measurements or speedups; cite the supplied estimate numbers as evidence.
 * changed_files: full contents of only the supplied files you change to implement your suggestions
   (action "modify"), or new small config files (action "create"). No placeholders or ellipses.
@@ -199,7 +229,7 @@ def check_suggestion(s, values, prefs, candidates, extraction, acknowledged):
     B0, G0 = values.get('training.microbatch_size'), values.get('training.gradient_accumulation_steps') or 1
     B1, G1 = merged.get('training.microbatch_size'), merged.get('training.gradient_accumulation_steps') or 1
     violations = []
-    if prefs.preserve_effective_batch and B0 and B1 and B0 * G0 != B1 * G1:
+    if not s.strategy and prefs.preserve_effective_batch and B0 and B1 and B0 * G0 != B1 * G1:
         violations.append(f'changes the effective batch ({B0 * G0} -> {B1 * G1}) although you asked to keep it')
     if prefs.preserve_sequence_length and 'data.sequence_length' in changes and changes['data.sequence_length'] != values.get('data.sequence_length'):
         violations.append('changes the sequence length although you asked to keep it')
@@ -217,21 +247,43 @@ def check_suggestion(s, values, prefs, candidates, extraction, acknowledged):
         violations.append('changes precision although you asked to keep it')
     if prefs.preserve_training_method and s.category in ('other',) and 'lora' in s.explanation.lower():
         violations.append('changes the training method although you asked to keep it')
-    if (prefs.max_gpus or 1) < 2 and s.category in ('data_parallel', 'sharding', 'tensor_parallel', 'pipeline_parallel'):
+    strategy = ST.normalise(s.strategy.model_dump()) if s.strategy else None
+    if strategy and ST.is_trivial(strategy):
+        strategy = None
+    gpu_limit = prefs.max_gpus or 1
+    if strategy and strategy['gpu_count'] > gpu_limit:
+        violations.append(f"uses {strategy['gpu_count']} GPUs, beyond your GPU limit of {gpu_limit}")
+    elif not strategy and gpu_limit < 2 and s.category in MULTI_GPU_CATEGORIES:
         violations.append('needs more than one GPU, beyond your GPU limit')
+    if strategy and prefs.preserve_effective_batch and B0 and B1 and B0 * G0 != B1 * G1 * strategy['data_parallel']:
+        violations.append(f"changes the global effective batch ({B0 * G0} -> {B1 * G1 * strategy['data_parallel']}) although you asked to keep it")
     valid_inputs = True
     if changes or hardware:
         check = G.validate(merged, None, extraction, acknowledged)
         valid_inputs = not check['errors']
         if not valid_inputs:
             issues.extend(f"{e['field']}: {e['message']}" for e in check['errors'][:3])
-    estimable = bool(changes or hardware) and s.category not in NOT_ESTIMABLE_CATEGORIES and valid_inputs and not violations
+    projection = None
+    if strategy:
+        issues.extend(f'Strategy: {m}.' for m in ST.check(strategy, merged))
+        if valid_inputs and not any(m.startswith('Strategy:') for m in issues):
+            projection = ST.project(merged, strategy, extraction, acknowledged)
+            if projection.get('status') != 'ok':
+                issues.extend(projection.get('errors', []))
+                projection = None
+    estimable = (bool(changes or hardware) and not strategy and s.category not in NOT_ESTIMABLE_CATEGORIES
+                 and valid_inputs and not violations)
     applied = {k: v for k, v in merged.items() if values.get(k) != v}
+    note = None
+    if projection:
+        note = ('Approximate projection: the single-GPU estimate scaled with rule-of-thumb factors for '
+                'checkpointing, attention, sharding and parallelism. Not calibrated; benchmark before relying on it.')
+    elif not estimable:
+        note = ('Not estimated: this tool models single-GPU batch, sequence and hardware changes, plus approximate '
+                'projections for a structured strategy. Treat this as qualitative advice.')
     return {**s.model_dump(), 'parameter_changes': changes, 'hardware': hardware, 'issues': issues, 'violations': violations,
-            'estimable': estimable, 'applicable': estimable,
-            'new_values': applied if estimable else {},
-            'estimate_note': None if estimable else 'Not estimated: this tool models single-GPU batch, sequence and hardware '
-                                                    'changes only. Treat this as qualitative advice.'}
+            'estimable': estimable, 'applicable': estimable, 'strategy': strategy, 'projection': projection,
+            'new_values': applied if estimable else {}, 'estimate_note': note}
 
 
 def advise(item, values, prefs, extraction, acknowledged=(), extra_files=None, client=None, model=DEFAULT_MODEL):

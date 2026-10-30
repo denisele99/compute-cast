@@ -1,6 +1,6 @@
 import { CompareRow, ConfigBody, Cost, Json, Prediction, api } from '../api';
-import { Gauge } from 'lucide-react';
-import { Accordion, Alert, Badge, Delta, MemoryBar, Section } from '../components/ui';
+import { Calculator, FlaskConical, Gauge } from 'lucide-react';
+import { Accordion, Alert, Badge, Delta, MemoryBar, ModeToggle, Section } from '../components/ui';
 import { BenchmarkPanel } from './Benchmark';
 
 export type Async<T> = { status: 'idle' | 'loading' | 'error' | 'ok'; data?: T; error?: string };
@@ -72,12 +72,12 @@ function PredictionView({ p, analysisId, compare, onCompare, onGoField, labels }
           : <p className="text-xs text-[#a7a0bb]">{p.benchmark_cost.reason}</p>}</div>
     </div>
 
-    <Accordion title="Memory breakdown" hint="per GPU" defaultOpen>
+    <Accordion title="Memory breakdown" hint="per GPU">
       <table className="w-full text-xs"><tbody>{MEMORY_ROWS.map(([k, l]) => <tr key={k} className={`border-t border-line ${['estimated_allocated_peak', 'capacity_with_runtime_and_margin'].includes(k) ? 'font-semibold' : ''}`}><td className="py-1">{l}</td><td className="text-right">{gib(p.memory[k])}</td></tr>)}</tbody></table>
     </Accordion>
 
     <div><h3 className="mb-1 text-xs font-semibold">Changes from the original analysis</h3>
-      {!orig || p.snapshots.is_original_run ? <p className="text-[11px] text-[#8e899b]">This is the original run; its settings are kept as an immutable snapshot and later runs are compared with it.</p>
+      {!orig || p.snapshots.is_original_run ? <p className="text-[11px] text-[#8e899b]">This is the original run: the first successful estimate in this analysis. Its settings are kept as an immutable snapshot and later runs are compared with it.</p>
         : p.snapshots.changes.length === 0 ? <p className="text-[11px] text-[#8e899b]">No changes from the original run.</p>
         : <ul className="space-y-0.5 text-xs">{p.snapshots.changes.map((c) => <li key={c.field}>Original {c.label.charAt(0).toLowerCase() + c.label.slice(1)}: <strong>{show(c.original)}</strong>; current: <strong>{show(c.current)}</strong></li>)}</ul>}
       {orig && !p.snapshots.is_original_run && <p className="mt-1 text-[11px] text-[#a7a0bb]">Original capacity {gib(orig.result_summary.capacity_gib)} → current {gib(fit.capacity_gib)} · original time {hours(orig.result_summary.training_hours)} → current {hours(d ? d.seconds / 3600 : null)}</p>}</div>
@@ -112,7 +112,9 @@ export function ResultsPage(props: {
 }): JSX.Element {
   const { mode, setMode, prediction } = props;
   return <div className="space-y-3"><Section id="results" icon={Gauge} title="Results" hint="Memory fit, training time and cost.">
-    <div className="mb-3 flex gap-1" role="tablist" aria-label="Results mode">{(['prediction', 'benchmark'] as const).map((m) => <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`border px-3 py-1 text-xs capitalize ${mode === m ? 'border-violet bg-violet/15' : 'border-line text-[#a7a0bb]'}`}>{m === 'prediction' ? 'Estimate' : 'Benchmark'}</button>)}</div>
+    <div className="mb-4"><ModeToggle label="Results mode" value={mode} onChange={setMode} options={[
+      { id: 'prediction', title: 'Estimate mode', description: 'Instant analytical prediction from your inputs. Nothing runs.', icon: Calculator },
+      { id: 'benchmark', title: 'Benchmark mode', description: 'Measure real speed and memory on a GPU.', icon: FlaskConical }]} /></div>
     {mode === 'prediction' ? <>
       {prediction.status === 'loading' && <p aria-live="polite" className="text-sm">Calculating…</p>}
       {prediction.status === 'error' && <Alert kind="error"><strong>Estimate failed.</strong> {prediction.error}</Alert>}
