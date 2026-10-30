@@ -124,24 +124,36 @@ CPU smoke tests are labelled as such and never used for calibration.
 | Memory estimate with a safety margin before submission | `config_builder.memory_check` | `BENCH_MEMORY_SAFETY_FRACTION` |
 | One GPU per job, from allowed platform/preset pairs only | Registry plus `nebius_hardware` | `BENCH_ALLOWED_PLATFORMS` |
 | Polling throttled per job | `jobs.refresh` | `BENCH_POLL_MIN_INTERVAL_SECONDS` |
-| User-facing cancel (off until verified live) | `/api/bench/jobs/{id}/cancel` | `BENCH_CANCEL_ENABLED` |
+| User-facing cancel (Nebius docs: cancel immediately stops the VM) | `/api/bench/jobs/{id}/cancel` | `BENCH_CANCEL_ENABLED` (default on) |
+| Smaller job disk than the Nebius 250 GiB default | `JobSpec.disk` | `BENCH_DISK_GIB` (default 100, minimum 50) |
 
-**About the platform timeout.** The Nebius CLI documents a job `--timeout` of 1–168 hours (default
-24 h). This was found through search results; `docs.nebius.com` itself could not be opened from
-the development environment. The SDK field is `JobSpec.timeout` (a duration). The backend sends at
-least one hour.
+**About the platform timeout.** Per the Nebius "Managing jobs" docs, the job timeout ranges from
+1 to 168 hours, with a default of 24 h; the job is cancelled if it hasn't completed by then. A job
+that exceeds it ends `FAILED` with `state_details.code = TimeoutExceeded`, which Compute Cast maps
+to `timed_out`. The backend sends 1 hour, the minimum.
 
-Whether that timeout counts from job creation, from provisioning or from container start still
-needs **live verification**. Until then, treat it only as a backstop. The real limits are the
-runner's 5 minutes and the backend's cancel at the deadline.
+The docs don't say whether the timeout counts from creation or from container start. It doesn't
+matter much here, because the real limits are the runner's 5 minutes and the backend's cancel at
+the deadline; the platform timeout is only a backstop.
+
+**About provisioning.** If capacity isn't available, Nebius keeps the job in `PROVISIONING` for up
+to 30 minutes, then ends it as `ERROR` with `NotEnoughResources`, and doesn't retry. Compute Cast
+cancels earlier, at `BENCH_STARTUP_GRACE_SECONDS` (15 min) plus the runner limit, and reports
+`timed_out`. Jobs are billed only while running, so waiting for capacity isn't charged.
 
 **About money.** Allowances are reservations inside Compute Cast. They are **not** a Nebius
 spending cap, and estimated charges are **not bills**: they are calculated from provider
 timestamps at `BENCH_RESERVATION_USD_PER_GPU_HOUR`.
 
-Nebius budget alerts notify you; they do not stop spending. **No maximum bill is guaranteed.**
-Limit exposure with a dedicated project, a restricted service account, low allowances and the
-kill switch.
+Nebius budget alerts notify you; they do not stop spending. The Nebius docs confirm this: "A
+budget does not stop or cap your usage", and usage data updates only every few hours. **No maximum
+bill is guaranteed.**
+
+The one hard limit Nebius offers is **quotas**. The docs recommend requesting a quota *decrease* to
+limit usage. For the dedicated benchmark project, ask for a GPU quota of 1 on each allowed
+platform, and 1 for regular VMs (also preemptible VMs, if you use them). Even a misbehaving backend
+then can't run more than one GPU at a time. Combine this with a low allowance, the kill switch and
+a budget alert set at a low threshold.
 
 ## Job states
 
@@ -153,8 +165,8 @@ kill switch.
 | `running` | `RUNNING` |
 | `cancelling` | `CANCELLING`, or after a user cancel request |
 | `succeeded` | `COMPLETED`, with a valid `results.json` showing status succeeded |
-| `failed` | `COMPLETED`, `FAILED`, `ERROR` or `DELETING`, with missing, invalid or failed results; or a submission error |
-| `timed_out` | the runner reported `timeout`, or the backend deadline passed |
+| `failed` | `COMPLETED`, `FAILED`, `ERROR` or `DELETING`, with missing, invalid or failed results (`state_details.code` `StartFailed`, `ContainerFailed` or `NotEnoughResources` is shown); or a submission error |
+| `timed_out` | the runner reported `timeout`, the Nebius code was `TimeoutExceeded`, or the backend deadline passed |
 | `cancelled` | `CANCELLED` |
 
 Jobs are not resumable. A failed job is not resubmitted; the user starts a new one.
@@ -172,13 +184,13 @@ were checked by constructing the real messages; no request was ever sent.
 | --- | --- |
 | Create a job | `JobServiceClient.create(CreateJobRequest(metadata=ResourceMetadata(parent_id=NEBIUS_PROJECT_ID, name="cc-bench-<id>", labels=…), spec=JobSpec(…)))` |
 | Image and command | `image=BENCH_IMAGE`, `container_command="python"`, `args="/app/benchmark.py --config /config/benchmark_config.json --output-dir /results --max-seconds 300"` |
-| Hardware | `platform` and `preset` (1 GPU) from `BENCH_ALLOWED_PLATFORMS` |
+| Hardware | `platform` and `preset` (1 GPU) from `BENCH_ALLOWED_PLATFORMS`; `disk` (Network SSD, `BENCH_DISK_GIB`); `subnet_id` from `NEBIUS_SUBNET_ID` (Nebius requires it only if the project has several subnets) |
 | Limits and pricing | `timeout`, `restart_attempts=0`, `preemptible` with a matching `pricing_model` (`on_demand` or `follows_spot_price`) |
 | Config delivery | `injected_files=[FileInjection(container_path="/config/benchmark_config.json", content=<config bytes ≤ 64 KiB>)]` |
 | Results storage | `volumes=[VolumeMount(source=NEBIUS_RESULTS_BUCKET_ID, source_path="<prefix>/<job id>", container_path="/results", mode=READ_WRITE)]` |
-| Private registry | `registry_credentials=RegistryCredentials(mysterybox_secret_version=…)`, only if set. The secret holds `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`. |
+| Private registry | Not needed for Nebius Container Registry in the same project (per the docs). For other registries: `registry_credentials=RegistryCredentials(mysterybox_secret_version=…)`. The SDK docstring requires secret keys `REGISTRY_USERNAME` and `REGISTRY_PASSWORD`; the CLI docs name them `registry_username` and `registry_password`. Check which one works on first use. |
 | Status, lookup, cancel | `get(GetJobRequest(id))` → `status.state`, `status.state_details`, `status.started_at`, `status.finished_at`; `get_by_name(GetJobByNameRequest(parent_id, name))`; `cancel(CancelJobRequest(id))` |
-| Authentication | `SDK(credentials_file_name=NEBIUS_CREDENTIALS_FILE)`, a service-account credentials JSON |
+| Authentication | The documented server-to-server method: `SDK(service_account_id=…, service_account_public_key_id=…, service_account_private_key_file_name=…)`, using an authorized key you upload for the service account. A credentials JSON (`NEBIUS_CREDENTIALS_FILE`) is still accepted as an alternative. |
 
 **No environment variables or secrets are passed to the container.** The runner needs none.
 Results are read back with a separate **read-only** S3 key, using boto3 against
@@ -186,19 +198,25 @@ Results are read back with a separate **read-only** S3 key, using boto3 against
 
 ### Service account and permissions
 
-Use a **dedicated project** for benchmarks and a **dedicated service account**. This account is
-separate from any Nebius Token Factory API key; never reuse a Token Factory key here. Grant it
-only:
+Use a **dedicated project** for benchmarks, holding only the results bucket and, ideally, the image
+registry. This matters because Nebius has **no Serverless-AI-specific role**: creating, viewing and
+cancelling jobs needs the general `editor` role ("View, Create, Modify, Cancel, Delete" on jobs).
+`editor` also covers most other resources, so scope it to that project only.
 
-- permission to create, get and cancel AI jobs in that project;
-- read access to the benchmark image in Container Registry, or use the MysteryBox secret for a
-  private registry;
-- permission to mount the results bucket into jobs.
+Set up two service accounts, both separate from any Token Factory API key:
 
-Create the S3 access key for the backend as **read-only** on the results bucket.
+1. **Job submitter** (used by the backend SDK). Put it in a custom group with an access permit for
+   `editor` on the benchmark project only, never the tenant. Create an authorized key: generate an
+   RSA key pair, upload the public key, and give the backend the private key file, the public key ID
+   and the service account ID.
+2. **Results reader** (used by the S3 client). Give it a custom group with `storage.object-viewer`
+   ("download objects and view their metadata") on the results bucket. Create an access key for it,
+   with an expiry date (`--expires-at`), and use that key's ID and secret as
+   `NEBIUS_S3_ACCESS_KEY_ID` and `NEBIUS_S3_SECRET_ACCESS_KEY`.
 
-Check the exact role names in the current Nebius IAM docs, then verify each permission with a
-deliberately failing request before enabling the kill switch.
+Container Registry images in the same project need no pull credentials. Verify each permission with
+a deliberately failing request before enabling the kill switch. Only `admin` can change quotas, so
+keep quota changes with a human administrator, not either service account.
 
 Credentials never reach the browser, the container, the local download or the logs:
 
@@ -206,8 +224,10 @@ Credentials never reach the browser, the container, the local download or the lo
 - `/api/bench/status` returns only the *names* of missing settings;
 - tests assert that secrets are absent from packages, configs and responses.
 
-**Workload identity and metadata access.** The JobSpec in SDK 0.6.31 has no service-account field,
-so the job is not given a service account by Compute Cast. Before going live, verify that a running
+**Workload identity and metadata access.** The Serverless AI job docs list no service-account or
+identity setting for jobs, and the JobSpec in SDK 0.6.31 has no such field. Nebius "workload
+identity federation" is for external identity providers, not for jobs. So the job isn't given an
+identity by Compute Cast, and the docs don't document one being attached by default. Before going live, verify that a running
 job cannot obtain project credentials through an instance metadata endpoint or a default
 identity. For example, run a throwaway job that tries the metadata address and the Nebius CLI
 without credentials, and confirm that both fail. If anything is reachable, keep the project
@@ -249,8 +269,9 @@ BENCH_CLOUD_ENABLED=1 BENCH_NEBIUS_BACKEND=fake BENCH_DEMO_PASSWORD=dev-pass BEN
 
 3. Set the environment from `backend/.env.example`:
    - Add `BENCH_DEMO_PASSWORD`, `BENCH_SESSION_SECRET` and `NEBIUS_S3_SECRET_ACCESS_KEY` as secrets.
-   - Upload the service-account credentials JSON as a **secret file**, for example
-     `/etc/secrets/nebius-credentials.json`, and point `NEBIUS_CREDENTIALS_FILE` at it.
+   - Upload the job submitter's private key as a **secret file**, for example
+     `/etc/secrets/nebius-private.pem`. Set `NEBIUS_PRIVATE_KEY_FILE` to its path, and set
+     `NEBIUS_PUBLIC_KEY_ID` and `NEBIUS_SERVICE_ACCOUNT_ID`.
    - Set `CORS_ALLOWED_ORIGINS=https://<user>.github.io`. This is the origin only, with no path.
    - Keep `BENCH_CLOUD_ENABLED=0` until the live checks below pass.
 
@@ -341,26 +362,45 @@ See its header for the environment variables it needs.
   invalid-config, timeout and no-GPU exit codes.
 - The browser flow, end to end, with a simulated provider.
 
+### Checked against docs.nebius.com
+
+These Serverless AI pages were read: "Managing jobs", "Lifecycle and statuses", "Automatic job
+restarts", "Debugging failed jobs" and "Pricing and quotas". So were the pages on IAM roles,
+service-account authentication and access keys, Container Registry authentication, budgets and
+quotas. They confirm the following:
+
+- `container_command` is the entrypoint and `args` its arguments.
+- Injected files are read-only, at most 64 KiB, at an absolute path.
+- The timeout ranges from 1 to 168 h, with a 24 h default.
+- `restart_attempts=0`, the default, runs the job once.
+- `pricing_model` must match `preemptible`.
+- The job states and the `state_details.code` values (`StartFailed`, `ContainerFailed`,
+  `TimeoutExceeded`, `NotEnoughResources`).
+- Waiting for capacity lasts up to 30 min, then the job ends in `ERROR`.
+- Cancel immediately stops the VM and deletes the container disk.
+- The VM is deleted when a job completes or fails; mounted volumes are kept.
+- Billing covers only the time a job is running.
+- `subnet_id` is needed only when the project has several subnets.
+- Same-project Container Registry needs no credentials.
+- Jobs need the `editor` role; `storage.object-viewer` is enough for reading results.
+- Budgets don't cap spending; decreasing quotas does.
+
 ### Needs live verification (not done: no Nebius account was used and no paid job was submitted)
 
 - The container image: it **has not been built or run**, because Docker was unavailable. Build,
   smoke-test, push and pin it by digest.
-- A real job submission:
+- A first real job:
   - `create().wait().resource_id` returns the job ID;
-  - `container_command` and `args` override the image entrypoint, and `args` is tokenised as
-    expected;
-  - `/config` file injection works;
-  - bucket mount write permissions and the resulting object key `<prefix>/<job>/results.json`;
-  - the S3 endpoint and region, and the read-only key.
-- State timing and transitions, and what `started_at` and `finished_at` measure, compared with
-  Nebius billing.
-- Cancel semantics: how quickly billing stops. Keep `BENCH_CANCEL_ENABLED=0` until this is
-  confirmed.
-- How `JobSpec.timeout` is counted.
-- Platform and preset availability for serverless jobs in your project's region.
-- Service-account role names and least privilege; no workload identity or metadata credentials
-  inside jobs.
+  - with a bucket volume, `source_path` (an SDK field the docs pages don't show) maps to the
+    object key `<prefix>/<job>/results.json`;
+  - files written to `/results` are in the bucket by the time the job reports `COMPLETED`;
+  - the S3 endpoint (for example `https://storage.eu-north1.nebius.cloud`) works with the read-only key.
+- What `status.started_at` and `finished_at` ("time when the job workload started/finished") cover,
+  compared with the billed time.
+- Whether the timeout is counted from creation or from container start (a backstop only).
+- The registry secret key names, if you use a non-Nebius private registry (uppercase in the SDK,
+  lowercase in the CLI docs).
+- Platform and preset capacity for serverless jobs in your project's region.
+- That a running job can't obtain credentials from a metadata endpoint, since the docs don't
+  cover this.
 - Postgres (`psycopg`) mode and the Render persistent disk; CORS from the real Pages origin.
-- The official docs at `docs.nebius.com` could not be opened from the development sandbox; network
-  policy blocked them. Integration details come from the SDK package itself and search summaries
-  of the docs. Re-check them against the current documentation.

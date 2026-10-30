@@ -152,9 +152,9 @@ All of the steps below run from `benchmark/`.
    docker push cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.0
    ```
 
-   Check the registry hostname for your region in the Nebius Container Registry docs; the
-   `eu-north1` hostname above is only an example. Log in first, for example with
-   `nebius registry configure-helper`, or `docker login` with your registry credentials.
+   Use your region's hostname: `cr.<region>.nebius.cloud`, for example `cr.eu-north1`,
+   `cr.us-central1` or `cr.uk-south1`. Log in first with `nebius registry configure-helper`, which
+   sets up the Docker credential helper.
 
 5. Pin the image by digest. Use an **immutable** reference in the backend, never a mutable tag.
 
@@ -166,11 +166,12 @@ All of the steps below run from `benchmark/`.
    the backend. For full reproducibility, also pin the `FROM` line by digest; see the comment in
    the `Dockerfile`.
 
-6. Configure private registry authentication. For a private registry, store `REGISTRY_USERNAME`
-   and `REGISTRY_PASSWORD` in a Nebius MysteryBox secret, and set the backend's
-   `NEBIUS_REGISTRY_SECRET_VERSION` to that secret version's ID. The job spec then references the
-   secret (`registry_credentials.mysterybox_secret_version`). The backend never sends registry
-   passwords itself.
+6. Configure registry access. A Nebius Container Registry in the **same project** as the jobs
+   needs no pull credentials. For any other private registry, store the username and password in a
+   SecretStash (formerly MysteryBox) secret, and set the backend's `NEBIUS_REGISTRY_SECRET_VERSION`
+   to that secret version's ID. The SDK docstring names the keys `REGISTRY_USERNAME` and
+   `REGISTRY_PASSWORD`, while the CLI docs use `registry_username` and `registry_password`, so check
+   which one works on the first job. The backend never sends registry passwords itself.
 
 When you change `benchmark.py`, `model_registry.py` or `models/`, bump `BENCHMARK_CODE_VERSION` in
 `model_registry.py`. Then rebuild the image, push it, and update `BENCH_IMAGE` to the new digest.

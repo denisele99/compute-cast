@@ -52,7 +52,12 @@ class Policy:
     s3_secret_access_key: str | None = field(repr=False)
     registry_secret_version: str | None = field(repr=False)
     cors_origins: tuple
-    cancel_enabled: bool = False       # user-facing cancel; enable after live verification
+    cancel_enabled: bool = True        # docs: cancel immediately stops the VM; BENCH_CANCEL_ENABLED=0 hides it
+    service_account_id: str | None = None
+    public_key_id: str | None = None
+    private_key_file: str | None = field(default=None, repr=False)
+    subnet_id: str | None = None        # required by Nebius only if the project has several subnets
+    disk_gib: int = 100                 # job VM disk (Nebius default 250 GiB; >= 50 GiB for GPU workloads)
 
     def missing_for_cloud(self):
         """Names (never values) of settings required before cloud jobs can be submitted."""
@@ -60,9 +65,11 @@ class Policy:
                 'BENCH_DATABASE_URL': os.environ.get('BENCH_DATABASE_URL')}
         if self.backend == 'sdk':
             need.update({'BENCH_IMAGE': self.image, 'NEBIUS_PROJECT_ID': self.project_id,
-                         'NEBIUS_CREDENTIALS_FILE': self.credentials_file, 'NEBIUS_RESULTS_BUCKET_ID': self.results_bucket_id,
+                         'NEBIUS_RESULTS_BUCKET_ID': self.results_bucket_id,
                          'NEBIUS_RESULTS_BUCKET_NAME': self.results_bucket_name, 'NEBIUS_S3_ENDPOINT': self.s3_endpoint,
                          'NEBIUS_S3_ACCESS_KEY_ID': self.s3_access_key_id, 'NEBIUS_S3_SECRET_ACCESS_KEY': self.s3_secret_access_key})
+            if not self.credentials_file and not (self.service_account_id and self.public_key_id and self.private_key_file):
+                need['NEBIUS_SERVICE_ACCOUNT_ID + NEBIUS_PUBLIC_KEY_ID + NEBIUS_PRIVATE_KEY_FILE'] = None
         return [k for k, v in need.items() if not v]
 
 
@@ -97,6 +104,9 @@ def load_policy() -> Policy:
         s3_endpoint=env('NEBIUS_S3_ENDPOINT') or None, s3_region=env('NEBIUS_S3_REGION') or None,
         s3_access_key_id=env('NEBIUS_S3_ACCESS_KEY_ID') or None, s3_secret_access_key=env('NEBIUS_S3_SECRET_ACCESS_KEY') or None,
         registry_secret_version=env('NEBIUS_REGISTRY_SECRET_VERSION') or None,
-        cancel_enabled=_b('BENCH_CANCEL_ENABLED'),
+        cancel_enabled=_b('BENCH_CANCEL_ENABLED', True),
+        service_account_id=env('NEBIUS_SERVICE_ACCOUNT_ID') or None, public_key_id=env('NEBIUS_PUBLIC_KEY_ID') or None,
+        private_key_file=env('NEBIUS_PRIVATE_KEY_FILE') or None, subnet_id=env('NEBIUS_SUBNET_ID') or None,
+        disk_gib=max(50, int(_f('BENCH_DISK_GIB', 100))),
         cors_origins=tuple(o.strip() for o in env('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()),
     )

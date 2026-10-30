@@ -465,6 +465,23 @@ class JobTests(BenchApiBase):
         self.assertIsNone(self.svc.store.get_job(job['id'])['active_slot'])
         self.assertEqual(self.submit('key-00000002').status_code, 202)  # slot released
 
+    def test_provider_state_codes_without_results(self):
+        for code, state, kind in (('TimeoutExceeded', 'timed_out', 'timeout'), ('NotEnoughResources', 'failed', 'not_enough_resources'),
+                                  ('ContainerFailed', 'failed', 'results_missing')):
+            self.client_fake.script = [f'{"ERROR" if code == "NotEnoughResources" else "FAILED"}:{code}']
+            job = self.submit(key=f'key-{code}').json()
+            done = self.poll(job['id'])
+            self.assertEqual((done['state'], done['error']['type']), (state, kind))
+            self.assertIn(code, done['provider_message'] or '')
+
+    def test_sdk_backend_needs_service_account_credentials(self):
+        self.svc.policy = replace(self.policy, backend='sdk', credentials_file=None)
+        missing = self.c.get('/api/bench/status').json()['missing_configuration']
+        self.assertTrue(any('NEBIUS_SERVICE_ACCOUNT_ID' in m for m in missing))
+        self.svc.policy = replace(self.policy, backend='sdk', credentials_file=None, service_account_id='serviceaccount-x',
+                                  public_key_id='publickey-x', private_key_file='/secrets/private.pem')
+        self.assertEqual(self.c.get('/api/bench/status').json()['missing_configuration'], [])
+
     def test_cancel(self):
         self.client_fake.script = ['RUNNING']
         job = self.submit().json()
@@ -544,7 +561,7 @@ class NebiusRequestTests(unittest.TestCase):
         req = JobRequest(job_id='abc', name='cc-bench-abc', image='cr.example/x@sha256:' + 'b' * 64, platform='gpu-h100-sxm',
                          preset='1gpu-16vcpu-200gb', config_bytes=config, runner_max_seconds=300, platform_timeout_hours=1,
                          preemptible=False, results_bucket_id='bucket-1', results_source_path='prefix/abc',
-                         labels={'app': 'compute-cast'}, registry_secret_version='secretver-1')
+                         labels={'app': 'compute-cast'}, registry_secret_version='secretver-1', subnet_id='vpcsubnet-1', disk_gib=100)
         msg = build_create_request('project-1', req)
         spec = msg.spec
         self.assertEqual((msg.metadata.parent_id, msg.metadata.name), ('project-1', 'cc-bench-abc'))
@@ -557,6 +574,8 @@ class NebiusRequestTests(unittest.TestCase):
         self.assertEqual((spec.volumes[0].source, spec.volumes[0].source_path), ('bucket-1', 'prefix/abc'))
         self.assertEqual(spec.registry_credentials.mysterybox_secret_version, 'secretver-1')
         self.assertEqual(spec.timeout.total_seconds(), 3600)
+        self.assertEqual((spec.subnet_id, spec.disk.size_bytes), ('vpcsubnet-1', 100 * 2 ** 30))
+        self.assertIsNone(build_create_request('p', replace(req, subnet_id=None)).spec.subnet_id or None)
         self.assertFalse(spec.environment_variables)  # nothing secret passed to the container
         with self.assertRaises(ValueError):
             build_create_request('p', replace(req, config_bytes=b'x' * (64 * 1024 + 1)))

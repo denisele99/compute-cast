@@ -8,13 +8,20 @@ preemptible / pricing_model / injected_files (FileInjection: container_path, con
 volumes (VolumeMount: source bucket id, source_path, container_path, mode READ_WRITE) /
 registry_credentials.mysterybox_secret_version.
 
-Credentials: a dedicated service account authenticated with its credentials JSON file
-(``SDK(credentials_file_name=NEBIUS_CREDENTIALS_FILE)``). Nothing credential-bearing is placed in the
-job spec except an optional MysteryBox secret *reference* for private-registry pulls; the container
-receives no environment secrets.
+Checked against docs.nebius.com (Serverless AI: "Managing jobs", "Lifecycle and statuses", "Automatic
+job restarts", "Pricing and quotas"): container_command is the entrypoint and args its arguments;
+injected files are read-only, <= 64 KiB, at an absolute path; timeout 1-168 h (default 24 h); exceeded
+timeouts end FAILED with state_details.code TimeoutExceeded; restart_attempts 0 runs once; no capacity
+within 30 min ends ERROR/NotEnoughResources; cancel immediately stops the VM; jobs are billed only while
+running; subnet_id is required only when the project has several subnets.
 
-Live verification still required (no account was used while building this): operation/resource-id
-behaviour of create(), args tokenisation, bucket mount permissions and object paths, and state timing.
+Credentials: a dedicated service account, authenticated as the docs describe for server-to-server use
+(private key + public key id + service account id), or with a credentials JSON file. Nothing
+credential-bearing is placed in the job spec except an optional SecretStash (MysteryBox) secret
+*reference* for private-registry pulls; the container receives no environment secrets.
+
+Still needs a live run: create().wait().resource_id, bucket source_path -> object key layout and write
+timing, and what started_at/finished_at cover relative to billing.
 """
 from __future__ import annotations
 
@@ -50,6 +57,8 @@ class JobRequest:
     results_source_path: str
     labels: dict
     registry_secret_version: str | None = None
+    subnet_id: str | None = None
+    disk_gib: int = 100
 
 
 @dataclass
@@ -59,6 +68,7 @@ class ProviderStatus:
     message: str
     started_at: float | None
     finished_at: float | None
+    code: str = ''          # state_details.code: StartFailed, ContainerFailed, TimeoutExceeded, NotEnoughResources
 
 
 class JobsClient(Protocol):
@@ -82,18 +92,22 @@ def build_create_request(project_id, r: JobRequest):
     """Pure construction of CreateJobRequest from the SDK's generated messages (unit-tested offline)."""
     from nebius.api.nebius.ai.v1 import CreateJobRequest, FollowsSpotPriceSpec, JobSpec, OnDemandSpec, PricingModelSpec
     from nebius.api.nebius.common.v1 import ResourceMetadata
+    from nebius.api.nebius.compute.v1 import DiskSpec
     if len(r.config_bytes) > 64 * 1024:
         raise ValueError('benchmark_config.json exceeds the 64 KiB FileInjection limit.')
     spec = dict(
         image=r.image, container_command='python', args=runner_args(r.runner_max_seconds),
         platform=r.platform, preset=r.preset, timeout=timedelta(hours=r.platform_timeout_hours),
         restart_attempts=0, preemptible=r.preemptible,
+        disk=JobSpec.DiskSpec(type=DiskSpec.DiskType.NETWORK_SSD, size_bytes=r.disk_gib * 2 ** 30),
         pricing_model=PricingModelSpec(follows_spot_price=FollowsSpotPriceSpec()) if r.preemptible
         else PricingModelSpec(on_demand=OnDemandSpec()),
         injected_files=[JobSpec.FileInjection(container_path=CONFIG_PATH, content=r.config_bytes)],
         volumes=[JobSpec.VolumeMount(source=r.results_bucket_id, source_path=r.results_source_path,
                                      container_path=RESULTS_DIR, mode=JobSpec.VolumeMount.Mode.READ_WRITE)],
     )
+    if r.subnet_id:
+        spec['subnet_id'] = r.subnet_id
     if r.registry_secret_version:
         spec['registry_credentials'] = JobSpec.RegistryCredentials(mysterybox_secret_version=r.registry_secret_version)
     return CreateJobRequest(metadata=ResourceMetadata(parent_id=project_id, name=r.name, labels=r.labels), spec=JobSpec(**spec))
@@ -118,7 +132,14 @@ class NebiusSDKClient:
         from nebius.api.nebius.ai.v1 import JobServiceClient
         from nebius.sdk import SDK
         if self._sdk is None:
-            self._sdk = SDK(credentials_file_name=self.policy.credentials_file, user_agent_prefix='compute-cast-benchmark/0.1')
+            p = self.policy
+            if p.service_account_id and p.public_key_id and p.private_key_file:
+                self._sdk = SDK(service_account_id=p.service_account_id, service_account_public_key_id=p.public_key_id,
+                                service_account_private_key_file_name=p.private_key_file, parent_id=p.project_id,
+                                user_agent_prefix='compute-cast-benchmark/0.1')
+            else:
+                self._sdk = SDK(credentials_file_name=p.credentials_file, parent_id=p.project_id,
+                                user_agent_prefix='compute-cast-benchmark/0.1')
         return JobServiceClient(self._sdk)
 
     def submit(self, request):
@@ -129,8 +150,8 @@ class NebiusSDKClient:
         from nebius.api.nebius.ai.v1 import GetJobRequest
         job = self._service().get(GetJobRequest(id=provider_job_id)).wait()
         details = job.status.state_details
-        return ProviderStatus(provider_job_id, job.status.state.name, f'{details.code} {details.message}'.strip(),
-                              _ts(job.status.started_at), _ts(job.status.finished_at))
+        return ProviderStatus(provider_job_id, job.status.state.name, (details.message or '').strip(),
+                              _ts(job.status.started_at), _ts(job.status.finished_at), code=details.code or '')
 
     def find_by_name(self, name):
         from nebius.aio.service_error import RequestError
@@ -170,7 +191,7 @@ class S3ResultStore:
 class FakeJobsClient:
     """Deterministic in-process provider for tests and offline demos. Never contacts Nebius.
 
-    ``script`` maps poll counts to provider states; the result written on completion is supplied by
+    ``script`` maps poll counts to provider states (optionally ``STATE:code``); the result written on completion is supplied by
     the test via ``results``. The UI labels jobs from this client as simulated.
     """
     label = 'SIMULATED provider (BENCH_NEBIUS_BACKEND=fake) — not a real Nebius job'
@@ -191,13 +212,13 @@ class FakeJobsClient:
         job = self.jobs[provider_job_id]
         if provider_job_id in self.cancelled:
             return ProviderStatus(provider_job_id, 'CANCELLED', 'cancelled', job['started'], job['started'])
-        state = self.script[min(job['polls'], len(self.script) - 1)]
+        state, _, code = self.script[min(job['polls'], len(self.script) - 1)].partition(':')
         job['polls'] += 1
         now = datetime.now(timezone.utc).timestamp()
         if state == 'RUNNING' and job['started'] is None:
             job['started'] = now - 1
         finished = now if state in PROVIDER_TERMINAL else None
-        return ProviderStatus(provider_job_id, state, '', job['started'] or (now - 2 if finished else None), finished)
+        return ProviderStatus(provider_job_id, state, '', job['started'] or (now - 2 if finished else None), finished, code=code)
 
     def find_by_name(self, name):
         return next((pid for pid, j in self.jobs.items() if j['name'] == name), None)

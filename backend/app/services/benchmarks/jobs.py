@@ -112,7 +112,8 @@ class JobService:
                              preset=job['preset'], config_bytes=job['config_json'].encode(), runner_max_seconds=p.runner_max_seconds,
                              platform_timeout_hours=p.platform_timeout_hours, preemptible=p.preemptible,
                              results_bucket_id=p.results_bucket_id or 'unset', results_source_path=self.source_path(job['id']),
-                             labels={'app': 'compute-cast', 'submission': job['id']}, registry_secret_version=p.registry_secret_version)
+                             labels={'app': 'compute-cast', 'submission': job['id']}, registry_secret_version=p.registry_secret_version,
+                             subnet_id=p.subnet_id, disk_gib=p.disk_gib)
         try:
             provider_id = self.client.submit(request)
         except Exception as exc:  # no automatic retry; check whether the create landed anyway
@@ -151,7 +152,8 @@ class JobService:
             log.warning('status of %s failed: %s', job_id, type(exc).__name__)
             return self.store.update_job(job_id, provider_message=f'Status check failed: {type(exc).__name__}')
         mapped = STATE_MAP.get(status.state, 'running')
-        fields = {'provider_state': status.state, 'provider_message': status.message[:300] or None,
+        message = ' '.join(x for x in (status.code, status.message) if x)[:300]
+        fields = {'provider_state': status.state, 'provider_message': message or None,
                   'provider_started_at': status.started_at, 'provider_finished_at': status.finished_at}
         if mapped == 'cancelled':
             return self._finish(job, 'cancelled', self._charge(status, now), **fields)
@@ -172,8 +174,15 @@ class JobService:
             return self.store.update_job(job['id'], provider_message=f'Results not readable yet: {type(exc).__name__}', **fields)
         charge = self._charge(status, now)
         if raw is None:
+            if status.code == 'TimeoutExceeded':
+                return self._finish(job, 'timed_out', charge, error={'type': 'timeout', 'message':
+                                    'The Nebius job timeout was exceeded before results were written.'}, **fields)
+            if status.code == 'NotEnoughResources':
+                return self._finish(job, 'failed', charge, error={'type': 'not_enough_resources', 'message':
+                                    'Nebius had no capacity for this platform and preset. Try another GPU or later.'}, **fields)
+            detail = f' ({status.code})' if status.code else ''
             return self._finish(job, 'failed', charge, error={'type': 'results_missing', 'message':
-                                f'Provider state {status.state}; no results.json was written. {status.message}'.strip()}, **fields)
+                                f'Provider state {status.state}{detail}; no results.json was written. {status.message}'.strip()}, **fields)
         try:
             parsed = RS.parse(raw)
         except RS.ResultError as exc:
