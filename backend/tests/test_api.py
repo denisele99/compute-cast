@@ -1,9 +1,6 @@
 """GPT-2 MVP API and estimator tests."""
-import ast
 import io
 import json
-import os
-import subprocess
 import tempfile
 import time
 import unittest
@@ -204,25 +201,6 @@ class FlowTests(unittest.TestCase):
         self.assertTrue(any(r['hours'] is None for r in rows if r['status'] == 'ok'))  # GPUs without specs
         self.assertEqual(self.c.get(self.url('/files/estimator_input.json')).json()['training']['microbatch_size'], 16)
 
-    def test_benchmark_plan_script_import_and_nebius(self):
-        _, values = self.load()
-        values.update(self.hardware())
-        self.predict(values)
-        plan = self.c.post(self.url('/benchmark/plan'), json={'values': values}).json()
-        self.assertEqual(plan['command'], 'python run_benchmark.py --output benchmark_result.json')
-        self.assertEqual(plan['predicted_cost']['status'], 'estimated')
-        self.assertFalse(plan['nebius']['available'])
-        script = self.c.post(self.url('/benchmark/script'), json={'values': values}).text
-        ast.parse(script)
-        self.assertIn('"architecture": "gpt2"', script)
-        result = {'schema': 'compute-cast-benchmark/1', 'analysis_id': self.aid, 'config_fingerprint': plan['fingerprint'],
-                  'representative': True, 'seconds_per_optimizer_step': {'median': 0.5, 'mean': 0.5, 'max': 0.6},
-                  'peak_memory_allocated_gib': 9.0, 'peak_memory_reserved_gib': 10.0}
-        imported = self.c.post(self.url('/benchmark/import'), files={'file': ('r.json', json.dumps(result).encode())}).json()
-        self.assertTrue(imported['matches_current_config'])
-        self.assertIn('peak_vram', imported['comparison'])
-        self.assertEqual(self.c.post(self.url('/benchmark/nebius'), json={'confirm_charges': True}).status_code, 501)
-
     def test_cache_cleanup_and_isolation(self):
         self.load()
         folder = Path(self.tmp.name) / self.aid
@@ -238,27 +216,6 @@ class FlowTests(unittest.TestCase):
         store = AnalysisStore(UploadCache(self.tmp.name), ttl_seconds=60)
         aid = store.create()
         self.assertEqual(store.sweep(now=time.time() + 120), [aid])
-
-
-@unittest.skipUnless(os.environ.get('BENCH_PYTHON'), 'set BENCH_PYTHON to a Python with torch installed')
-class GeneratedScriptRunsTests(unittest.TestCase):
-    def test_reference_model_matches_predicted_parameter_count(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            c = client(tmp)
-            aid = c.post('/api/analysis').json()['analysis_id']
-            values = {'model.num_layers': 2, 'model.hidden_size': 64, 'model.num_attention_heads': 4,
-                      'model.vocab_size': 500, 'model.max_position_embeddings': 64, 'model.attention_dropout': 0.1,
-                      'model.embedding_dropout': 0.1, 'model.residual_dropout': 0.1, 'training.microbatch_size': 2,
-                      'training.gradient_accumulation_steps': 2, 'training.duration_mode': 'optimizer_updates',
-                      'training.optimizer_updates': 10, 'data.sequence_length': 32, 'hardware.vram_gib': 24.0,
-                      'hardware.usable_vram_gib': 24.0}
-            pred = c.post(f'/api/analysis/{aid}/predict', json={'values': values}).json()
-            script = Path(tmp) / 'run_benchmark.py'
-            script.write_text(c.post(f'/api/analysis/{aid}/benchmark/script', json={'values': values}).text)
-            out = Path(tmp) / 'out.json'
-            subprocess.run([os.environ['BENCH_PYTHON'], str(script), '--device', 'cpu', '--steps', '2', '--warmup', '1',
-                            '--output', str(out)], check=True, cwd=tmp)
-            self.assertEqual(json.loads(out.read_text())['parameter_count'], pred['parameters'])
 
 
 if __name__ == '__main__':

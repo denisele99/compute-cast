@@ -1,0 +1,7 @@
+# Build context allowlist: only the runner, registry, models and requirements are copied.
+*
+!benchmark.py
+!model_registry.py
+!requirements.txt
+!models/
+models/__pycache__/

@@ -1,9 +1,11 @@
 // GPT-2 MVP E2E (flow 1): example files -> autofill -> Nebius H100 -> estimate -> comparison ->
-// benchmark script/import -> edit + re-run (original vs current) -> cache cleanup on page close.
+// benchmark config review/package/import (+ simulated Nebius job) -> edit + re-run (original vs current) -> cache cleanup on page close.
 // Requires the backend (uvicorn) and the frontend dev server (npm run dev) running.
 // Env: E2E_BASE_URL (default http://127.0.0.1:5173), E2E_CACHE_DIR (must equal the backend's
 // UPLOAD_CACHE_DIR; default <tmp>/compute_cast_uploads), BENCH_PYTHON (a Python with torch; when
-// unset the benchmark run/import step is skipped), E2E_OUT (screenshots; default a temp folder).
+// unset the local package run/import step is skipped), E2E_BENCH_PASSWORD (the backend's
+// BENCH_DEMO_PASSWORD when it runs with BENCH_CLOUD_ENABLED=1 BENCH_NEBIUS_BACKEND=fake; when unset
+// the cloud tab is only checked to be unavailable), E2E_OUT (screenshots; default a temp folder).
 const { chromium } = require('playwright');
 const fs = require('fs');
 const os = require('os');
@@ -74,20 +76,63 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   await page.screenshot({ path: path.join(shots, '03-results.png'), fullPage: true });
 
   await page.getByRole('tab', { name: 'Benchmark' }).click();
-  await page.getByRole('button', { name: 'Prepare benchmark' }).click();
-  await page.getByText('Run on Nebius').waitFor();
-  expect((await page.locator('code').first().innerText()).startsWith('python run_benchmark.py'), 'CLI command shown');
-  expect(await page.getByRole('button', { name: /Start paid Nebius benchmark/ }).isDisabled(), 'Nebius run unavailable, not simulated');
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download run_benchmark.py' }).click()]);
-  const script = path.join(dir, 'run_benchmark.py'); await download.saveAs(script);
-  expect(fs.readFileSync(script, 'utf8').includes('"architecture": "gpt2"'), 'script embeds GPT-2 config');
+  await page.getByText('Review benchmark_config.json').waitFor({ timeout: 20000 });
+  let bench = await page.locator('#results').innerText();
+  expect(/synthetic token ids/i.test(bench), 'synthetic-input scope explained');
+  expect(/detected/i.test(bench) && /assumption/i.test(bench) && /default/i.test(bench), 'provenance shown (detected/default/assumption)');
+  expect(/Memory check/i.test(bench) && /fits/i.test(bench), 'memory check against VRAM with safety margin');
+  // Small shapes so the optional CPU smoke run is quick; edits are kept across regeneration.
+  for (const [k, v] of [['training.microbatch_size', '1'], ['training.gradient_accumulation_steps', '1'], ['input.sequence_length', '32'], ['measurement.warmup_updates', '0'], ['measurement.measured_updates', '1']]) {
+    await page.getByLabel(k, { exact: true }).fill(v);
+  }
+  await page.waitForTimeout(1200);
+  expect(/your choice/i.test(await page.locator('#results').innerText()), 'edited fields marked as your choice');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download local benchmark package' }).click()]);
+  const zip = path.join(dir, 'compute-cast-benchmark.zip'); await download.saveAs(zip);
+  const pkg = path.join(dir, 'pkg');
+  execFileSync('python3', ['-c', 'import sys,zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])', zip, pkg]);
+  const root = path.join(pkg, 'compute-cast-benchmark');
+  const cfg = JSON.parse(fs.readFileSync(path.join(root, 'benchmark_config.json'), 'utf8'));
+  expect(cfg.training.microbatch_size === 1 && cfg.input.source === 'synthetic', 'package config carries the reviewed edits');
+  expect(['benchmark.py', 'model_registry.py', 'models/decoder.py', 'requirements.txt', 'README.md'].every((n) => fs.existsSync(path.join(root, n))), 'package has trusted runner files');
   if (process.env.BENCH_PYTHON) {
-    const out = path.join(dir, 'benchmark_result.json');
-    execFileSync(process.env.BENCH_PYTHON, [script, '--device', 'cpu', '--steps', '1', '--warmup', '0', '--output', out], { cwd: dir, stdio: 'inherit' });
-    await page.locator('input[type=file][accept*=json]').last().setInputFiles(out);
-    await page.getByText('Measured · benchmark').waitFor({ timeout: 20000 });
-    expect(/matches current config/i.test(await page.locator('#results').innerText()), 'imported benchmark matches config');
-  } else log('skipped - benchmark run/import (set BENCH_PYTHON)');
+    execFileSync(process.env.BENCH_PYTHON, ['benchmark.py', '--config', 'benchmark_config.json', '--cpu-smoke'], { cwd: root, stdio: 'inherit' });
+    await page.locator('input[type=file][accept*=json]').last().setInputFiles(path.join(root, 'results.json'));
+    await page.getByText('Predicted vs measured').waitFor({ timeout: 20000 });
+    bench = await page.locator('#results').innerText();
+    expect(/CPU smoke test/i.test(bench) && /not used for calibration/i.test(bench), 'imported smoke result labelled, no calibration');
+    expect(/matches current config/i.test(bench), 'imported result matches the reviewed config');
+  } else log('skipped - local package run/import (set BENCH_PYTHON)');
+  await page.getByLabel('Paste results.json').fill('{"schema_version": "1.0", "status": "succeeded"}');
+  await page.getByRole('button', { name: 'Validate and compare' }).click();
+  await page.getByText(/needs effective_config/).waitFor({ timeout: 10000 });
+  log('ok - malformed results rejected');
+  await page.screenshot({ path: path.join(shots, '04-benchmark-local.png'), fullPage: true });
+
+  await page.getByRole('tab', { name: 'Nebius AI Cloud' }).click();
+  if (process.env.E2E_BENCH_PASSWORD) {
+    // Backend started with BENCH_CLOUD_ENABLED=1 BENCH_NEBIUS_BACKEND=fake (simulated provider, no Nebius calls).
+    await page.getByText(/simulated provider/i).first().waitFor({ timeout: 10000 });
+    await page.getByLabel('Display name').fill('E2E');
+    await page.getByLabel('Demo password').fill('wrong-password');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByText('Incorrect password.').waitFor();
+    log('ok - wrong password rejected');
+    expect(await page.getByLabel('Demo password').getAttribute('type') === 'password', 'password input is masked');
+    await page.getByLabel('Demo password').fill(process.env.E2E_BENCH_PASSWORD);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByText(/Signed in as/).waitFor();
+    expect(await page.getByRole('button', { name: 'Start Nebius benchmark' }).isDisabled(), 'submit needs charge confirmation');
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: 'Start Nebius benchmark' }).click();
+    await page.getByText(/job [0-9a-f]{20}/).waitFor({ timeout: 10000 });
+    await page.getByText(/results missing/i).waitFor({ timeout: 60000 });
+    expect(/never retried automatically/.test(await page.locator('#results').innerText()), 'simulated job ends failed without fake results');
+    await page.screenshot({ path: path.join(shots, '05-benchmark-nebius-simulated.png'), fullPage: true });
+  } else {
+    await page.getByText(/Switched off|Not configured/).first().waitFor({ timeout: 10000 });
+    log('ok - cloud benchmarks shown unavailable (set E2E_BENCH_PASSWORD with a fake-backend server to test login/submit)');
+  }
 
   await page.getByRole('tab', { name: 'Estimate' }).click();
   await page.getByRole('button', { name: 'Edit inputs' }).click();

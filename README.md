@@ -9,7 +9,7 @@ no weights are downloaded and nothing runs on a GPU to produce the estimate.
 - **Unsupported settings** in files (FP16, gradient checkpointing, LoRA, dynamic padding, multi-GPU, …) are shown as conflicts; you can explicitly choose a supported hypothetical scenario.
 - **Hardware:** Nebius GPUs with preemptible prices, the general GPU catalogue, or a custom GPU.
 - **Results:** capacity vs usable VRAM, memory breakdown, training compute time, cost, benchmark cost, hardware comparison, changes vs the original run, and "How we calculated this".
-- **Benchmark mode:** downloadable `run_benchmark.py` for your own GPU and result import. Running on Nebius is **not implemented** and shown as unavailable.
+- **Benchmark mode:** review a validated `benchmark_config.json`, then either download a local package (same trusted runner as the cloud image) and import `results.json`, or run it on Nebius AI Cloud Serverless Jobs (password-protected, allowance-limited, off by default). Predicted vs measured are shown side by side. See **[BENCHMARK.md](BENCHMARK.md)**.
 
 Inputs, fixed assumptions, formulas and the change log: **[MVP.md](MVP.md)**. Estimator formulas: [ESTIMATOR.md](backend/app/services/estimators/ESTIMATOR.md).
 

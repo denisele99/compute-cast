@@ -1,6 +1,6 @@
-import { ChangeEvent, useState } from 'react';
-import { BenchmarkPlan, BenchmarkResult, CompareRow, Cost, Json, Prediction, api } from '../api';
-import { Accordion, Alert, Badge, CopyBlock, MemoryBar, Section, Unavailable } from '../components/ui';
+import { CompareRow, ConfigBody, Cost, Json, Prediction, api } from '../api';
+import { Accordion, Alert, Badge, MemoryBar, Section } from '../components/ui';
+import { BenchmarkPanel } from './Benchmark';
 
 export type Async<T> = { status: 'idle' | 'loading' | 'error' | 'ok'; data?: T; error?: string };
 export const gib = (v: number | null | undefined) => (v === null || v === undefined ? '—' : v > 0 && v < 0.01 ? `${(v * 1024).toFixed(2)} MiB` : `${v.toFixed(2)} GiB`);
@@ -89,45 +89,10 @@ function PredictionView({ p, analysisId, compare, onCompare, onGoField, labels }
   </div>;
 }
 
-function BenchmarkView({ plan, onPlan, onDownload, onImport, results, prediction }: { plan: Async<BenchmarkPlan>; onPlan: () => void; onDownload: () => void; onImport: (f: File) => void; results: Async<BenchmarkResult[]>; prediction: Prediction | null }): JSX.Element {
-  const pl = plan.data;
-  return <div className="space-y-3">
-    <Alert kind="warn">Benchmarking runs real training steps and needs a GPU; paid cloud GPUs incur charges. Measured results are kept separate from the analytical estimate.</Alert>
-    {plan.status === 'idle' && <button type="button" onClick={onPlan} disabled={!prediction || prediction.status !== 'ok'} className="bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-50">Prepare benchmark</button>}
-    {(!prediction || prediction.status !== 'ok') && <p className="text-xs text-[#a7a0bb]">Run a successful estimate first; the benchmark uses the same configuration.</p>}
-    {plan.status === 'loading' && <p aria-live="polite">Preparing…</p>}
-    {plan.status === 'error' && <Alert kind="error">{plan.error}</Alert>}
-    {pl && <>
-      <div className="text-xs"><p className="eyebrow mb-1">Requirements</p><ul className="list-disc pl-4">{pl.requirements.environment.map((e) => <li key={e}>{e}</li>)}</ul>
-        <ul className="mt-1 space-y-0.5">{pl.requirements.files.map((f) => <li key={f.flag}><span className="font-mono">{f.flag}</span> (optional) — {f.description} {f.provided.length ? <span className="text-[#7ee0b0]">Uploaded: {f.provided.join(', ')}</span> : null}</li>)}</ul>
-        <p className="mt-1 text-[#8e899b]">Credentials: {pl.requirements.credentials.join(' ')}</p></div>
-      <Section number="L" title="Run locally">
-        <div className="space-y-2">{pl.requirements.warnings.map((w) => <Alert key={w} kind="warn">{w}</Alert>)}
-          <button type="button" onClick={onDownload} className="bg-white px-4 py-2 text-xs font-semibold text-black">Download run_benchmark.py</button>
-          <CopyBlock text={pl.command} label="benchmark command" /><CopyBlock text={pl.command_template} label="benchmark command template" />
-          <label className="block border border-dashed border-line p-2 text-xs">Import benchmark_result.json<input type="file" accept=".json,application/json" className="mt-1 block text-[11px]" onChange={(e: ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = ''; }} /></label>
-          {results.status === 'error' && <Alert kind="error">{results.error}</Alert>}
-          {results.data?.map((r, i) => <div key={i} className="border border-line p-2 text-xs"><div className="flex flex-wrap gap-1"><Badge kind="good">Measured · benchmark</Badge><Badge kind={r.matches_current_config ? 'good' : 'warn'}>{r.matches_current_config ? 'matches current config' : 'different config'}</Badge></div>
-            <p className="mt-1">{r.device?.name} · torch {r.torch_version} · {r.model_source.replace(/_/g, ' ')} · {r.data_source} data{r.user_code_executed ? ' · user code executed' : ''}</p>
-            <p>Median {r.seconds_per_optimizer_step.median.toFixed(4)} s/update · peak reserved {gib(r.peak_memory_reserved_gib)} (allocated {gib(r.peak_memory_allocated_gib)})</p>
-            {r.comparison.peak_vram && <p>Estimated allocated peak {gib(r.comparison.peak_vram.predicted_gib)} vs measured reserved {gib(r.comparison.peak_vram.measured_reserved_gib)} (×{r.comparison.peak_vram.ratio_measured_to_predicted.toFixed(2)})</p>}
-            {r.comparison.seconds_per_optimizer_step && <p>Estimated {r.comparison.seconds_per_optimizer_step.predicted.toFixed(4)} s/update vs measured {r.comparison.seconds_per_optimizer_step.measured_median.toFixed(4)} s</p>}
-            {[...r.issues, ...r.notes].map((m) => <p key={m} className="text-[#e6d28a]">{m}</p>)}</div>)}
-        </div></Section>
-      <Section number="N" title="Run on Nebius">
-        <p className="text-xs">Estimated benchmark charge: <strong>{pl.predicted_cost.status === 'estimated' ? money(pl.predicted_cost.cost) : 'unavailable'}</strong> {pl.predicted_cost.status === 'estimated' ? `(${hours(pl.predicted_cost.elapsed_hours)} compute on 1 GPU)` : `— ${pl.predicted_cost.reason}`}</p>
-        <div className="mt-2"><Unavailable label="Unavailable">{pl.nebius.reason} Nothing is provisioned and no charges can be incurred from this page.</Unavailable></div>
-        <ul className="mt-2 list-disc pl-4 text-[11px] text-[#a7a0bb]">{pl.nebius.remaining_work.map((w) => <li key={w}>{w}</li>)}</ul>
-        <button type="button" disabled className="mt-2 border border-line px-3 py-1.5 text-xs opacity-40">Start paid Nebius benchmark — unavailable</button>
-      </Section>
-    </>}
-  </div>;
-}
-
 export function ResultsPage(props: {
   mode: 'prediction' | 'benchmark'; setMode: (m: 'prediction' | 'benchmark') => void; prediction: Async<Prediction>; analysisId: string; labels: Record<string, string>;
   compare: Async<{ rows: CompareRow[]; note: string }>; onCompare: () => void; onGoField: (k: string) => void; onEdit: () => void; onRecs: () => void;
-  plan: Async<BenchmarkPlan>; onPlan: () => void; onDownload: () => void; onImport: (f: File) => void; benchmarks: Async<BenchmarkResult[]>;
+  body: () => ConfigBody; onGoHardware: () => void;
 }): JSX.Element {
   const { mode, setMode, prediction } = props;
   return <div className="space-y-3"><Section id="results" number="05" title="Results" hint="Estimate is analytical; benchmark results are measurements.">
@@ -137,7 +102,7 @@ export function ResultsPage(props: {
       {prediction.status === 'error' && <Alert kind="error"><strong>Estimate failed.</strong> {prediction.error}</Alert>}
       {prediction.status === 'idle' && <p className="text-sm text-[#a7a0bb]">Run an estimate from the Hardware step.</p>}
       {prediction.data && <PredictionView p={prediction.data} analysisId={props.analysisId} compare={props.compare} onCompare={props.onCompare} onGoField={props.onGoField} labels={props.labels} />}
-    </> : <BenchmarkView plan={props.plan} onPlan={props.onPlan} onDownload={props.onDownload} onImport={props.onImport} results={props.benchmarks} prediction={prediction.data ?? null} />}
+    </> : <BenchmarkPanel analysisId={props.analysisId} body={props.body} ready={prediction.data?.status === 'ok'} onGoHardware={props.onGoHardware} />}
   </Section>
   <div className="flex justify-between"><button type="button" onClick={props.onEdit} className="border border-line px-4 py-2 text-sm">Edit inputs</button><button type="button" onClick={props.onRecs} disabled={prediction.data?.status !== 'ok'} className="bg-violet px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">Improve this plan</button></div></div>;
 }

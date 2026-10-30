@@ -73,7 +73,7 @@ def predict(values, provenance=None, extraction=None, acknowledged=None):
         cost = pricing.estimate_cost(hours, G.pricing(v))
     else:
         cost = {'status': 'unavailable', 'reason': 'Runtime is unavailable, so cost cannot be estimated.'}
-    from ..benchmark_service import benchmark_cost
+    from ..benchmarks.config_builder import benchmark_cost
     partial = {'runtime': runtime}
     return {
         'benchmark_cost': benchmark_cost(partial, v),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, Menu, RotateCcw } from 'lucide-react';
-import { BenchmarkPlan, BenchmarkResult, CompareRow, ConfigBody, Extraction, HardwareOption, Json, Prediction, Schema, UploadResponse, UploadedFile, Validation, api } from './api';
+import { CompareRow, ConfigBody, Extraction, HardwareOption, Json, Prediction, Schema, UploadResponse, UploadedFile, Validation, api } from './api';
 import { FormCtx } from './components/FieldGrid';
 import { Alert } from './components/ui';
 import { FormState, acceptPending, applyCatalogue, applyFindings, applySuggestions, dismissPending, initialForm, markReviewed, needsReview, setManual, toProvenance, toValues, visible } from './lib/form';
@@ -27,8 +27,6 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   const [mode, setMode] = useState<'prediction' | 'benchmark'>('prediction');
   const [prediction, setPrediction] = useState<Async<Prediction>>({ status: 'idle' });
   const [compare, setCompare] = useState<Async<{ rows: CompareRow[]; note: string }>>({ status: 'idle' });
-  const [plan, setPlan] = useState<Async<BenchmarkPlan>>({ status: 'idle' });
-  const [benchmarks, setBenchmarks] = useState<Async<BenchmarkResult[]>>({ status: 'idle', data: [] });
   const [scen, setScen] = useState<Record<string, ScenarioState>>({});
   const values = useMemo(() => toValues(form), [form]);
   const body = useCallback((): ConfigBody => ({ values: toValues(form), provenance: toProvenance(form), metadata: { acknowledged_conflicts: acknowledged } }), [form, acknowledged]);
@@ -68,7 +66,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   async function reset(): Promise<void> {
     if (analysisId) { try { await api.resetAnalysis(analysisId); } catch { /* expiry sweeping is the backstop */ } }
     setForm(initialForm(schema)); setValidation(null); setExtraction(null); setKept([]); setSkipped([]); setAcknowledged([]); setPrediction({ status: 'idle' }); setCompare({ status: 'idle' });
-    setPlan({ status: 'idle' }); setBenchmarks({ status: 'idle', data: [] }); setScen({}); setStep('workload'); setMode('prediction'); setAnalysisId('');
+    setScen({}); setStep('workload'); setMode('prediction'); setAnalysisId('');
     setNonce((n) => n + 1);
   }
 
@@ -119,25 +117,13 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   }
 
   async function runPrediction(): Promise<void> {
-    go('results'); setMode('prediction'); setPrediction({ status: 'loading' }); setCompare({ status: 'idle' }); setPlan({ status: 'idle' }); setScen({});
+    go('results'); setMode('prediction'); setPrediction({ status: 'loading' }); setCompare({ status: 'idle' }); setScen({});
     try { setPrediction({ status: 'ok', data: await api.predict(analysisId, body()) }); document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' }); }
     catch (e) { setPrediction({ status: 'error', error: message(e) }); }
   }
   async function runCompare(): Promise<void> {
     setCompare({ status: 'loading' });
     try { setCompare({ status: 'ok', data: await api.compare(analysisId, body()) }); } catch (e) { setCompare({ status: 'error', error: message(e) }); }
-  }
-  async function preparePlan(): Promise<void> {
-    setPlan({ status: 'loading' });
-    try { setPlan({ status: 'ok', data: await api.benchmarkPlan(analysisId, body()) }); } catch (e) { setPlan({ status: 'error', error: message(e) }); }
-  }
-  async function downloadScript(): Promise<void> {
-    try { const blob = await api.benchmarkScript(analysisId, body()); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'run_benchmark.py'; a.click(); URL.revokeObjectURL(url); }
-    catch (e) { setPlan((p) => ({ ...p, status: 'error', error: message(e) })); }
-  }
-  async function importBenchmark(file: File): Promise<void> {
-    try { const r = await api.importBenchmark(analysisId, file); setBenchmarks((b) => ({ status: 'ok', data: [r, ...(b.data ?? [])] })); }
-    catch (e) { setBenchmarks((b) => ({ ...b, status: 'error', error: message(e) })); }
   }
   async function recalc(sc: Scenario): Promise<void> {
     const changed = sc.change(values); if (!changed) return;
@@ -176,7 +162,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
         handlers={{ busy: uploadBusy, error: uploadError, extraction, kept, skipped, onUpload, onRemove: (f) => void onRemove(f), onHf, onExample }} />}
       {step === 'hardware' && <HardwarePage ctx={ctx} onSelect={selectHardware} onCustom={customHardware} onBack={() => go('workload')} onRun={() => void runPrediction()} busy={prediction.status === 'loading'} blockers={allBlockers} />}
       {step === 'results' && <ResultsPage mode={mode} setMode={setMode} prediction={prediction} analysisId={analysisId} labels={labels} compare={compare} onCompare={() => void runCompare()} onGoField={goField}
-        onEdit={() => go('workload')} onRecs={() => go('recs')} plan={plan} onPlan={() => void preparePlan()} onDownload={() => void downloadScript()} onImport={(f) => void importBenchmark(f)} benchmarks={benchmarks} />}
+        onEdit={() => go('workload')} onRecs={() => go('recs')} body={body} onGoHardware={() => go('hardware')} />}
       {step === 'recs' && <RecommendationsPage values={values} baseline={prediction.data ?? null} states={scen} onRun={(s) => void recalc(s)} onApply={applyScenario} onBack={() => go('results')} />}
     </>}
   </main>;
