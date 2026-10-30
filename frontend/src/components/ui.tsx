@@ -8,11 +8,21 @@ export function Badge({ kind, children }: { kind: 'good' | 'warn' | 'bad' | 'mut
   return <span className={`inline-flex items-center gap-1.5 border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${tone}`}>{children}</span>;
 }
 
-/** Panel with an icon, a title and a one-line plain-language description of what the section is for. */
+/** Step heading: small accent label, large light title, muted one-line subtitle, optional right-hand note. */
+export function PageHeading({ eyebrow, title, subtitle, aside }: { eyebrow: string; title: string; subtitle?: ReactNode; aside?: ReactNode }): JSX.Element {
+  return <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div><p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a48fff]">{eyebrow}</p>
+      <h2 className="mt-2 text-2xl font-light tracking-tight text-white sm:text-[1.75rem]">{title}</h2>
+      {subtitle && <p className="mt-1.5 text-sm text-[#a7a0bb]">{subtitle}</p>}</div>
+    {aside && <div className="text-[11px] text-[#8e899b]">{aside}</div>}
+  </header>;
+}
+
+/** Panel with an icon tile, a title and a one-line plain-language description of what the section is for. */
 export function Section({ number, icon: Icon, title, hint, children, id, actions }: { number?: string; icon?: LucideIcon; title: string; hint?: ReactNode; children: ReactNode; id?: string; actions?: ReactNode }): JSX.Element {
-  return <section id={id} className="panel p-4 sm:p-5"><div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div className="flex items-start gap-2.5">
-    {Icon ? <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center border border-line text-[#8e7cea]" aria-hidden><Icon size={15} /></span> : number && <span className="eyebrow mt-1 text-[#8e7cea]">{number}</span>}
-    <div><h2 className="text-base font-semibold">{title}</h2>{hint && <p className="mt-0.5 text-xs text-[#a7a0bb]">{hint}</p>}</div></div>{actions}</div>{children}</section>;
+  return <section id={id} className="panel rounded-lg border-white/10 bg-gradient-to-b from-[#12111c] to-[#0c0c13] p-4 sm:p-5"><div className="mb-4 flex flex-wrap items-start justify-between gap-2"><div className="flex items-start gap-3">
+    {Icon ? <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-violet/40 bg-violet/10 text-[#b7a6ff]" aria-hidden><Icon size={16} /></span> : number && <span className="eyebrow mt-1 text-[#8e7cea]">{number}</span>}
+    <div><h3 className="text-base font-medium text-white">{title}</h3>{hint && <p className="mt-0.5 text-xs leading-5 text-[#a7a0bb]">{hint}</p>}</div></div>{actions}</div>{children}</section>;
 }
 
 /** Signed change vs the original run: arrow shows the direction; green = better, red = worse for that metric. */
