@@ -88,7 +88,7 @@ per logit, 2 optimizer scratch copies, 0.5 GiB runtime baseline, 15% capacity ma
 
 **Fit rule:** `(allocated peak + 0.5 GiB) × 1.15 ≤ usable VRAM limit`, with the limit defaulting to 100%
 of VRAM (the margin is already in the estimate). **Cost:** `training compute hours × 1 GPU × price per
-GPU-hour`. **Benchmark cost:** 10 warm-up + 50 measured updates of compute time; provisioning excluded.
+GPU-hour`. **Benchmark cost:** 3 warm-up + 10 measured updates (the benchmark defaults) of compute time; provisioning excluded; an estimate, not a bill.
 
 ## Changes in this version
 
@@ -101,7 +101,7 @@ GPU-hour`. **Benchmark cost:** 10 warm-up + 50 measured updates of compute time;
 - UI: compact fields; errors/notes in hover/click popovers; one review notice instead of per-field
   buttons; sample statistics behind a toggle; removable files and Hugging Face model; Execution
   assumptions panel; results rewired to the GPT-2 estimate.
-- Benchmark script: GPT-2 reference model now uses `gelu_new`, configured dropouts and `n_inner`.
+- Benchmark mode: the generated `run_benchmark.py` was replaced by the trusted `benchmark/` runner plus a validated `benchmark_config.json` (see BENCHMARK.md).
 - Legacy (kept, marked "LEGACY - NOT USED BY THE GPT-2 MVP", still tested in `tests/test_legacy.py`):
   MLP/classic-transformer profiles, `gpu_memory.py`, `gpu_runtime.py`, `estimator.py`,
   `normalize_inputs.py`, `collect_workload.py`, legacy mappers in `static_extract.py`.

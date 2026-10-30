@@ -1,0 +1,4 @@
+# The runner needs only the Python standard library and PyTorch.
+# Container: provided by the base image pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime (torch 2.5.1).
+# Local runs: install a CUDA build of this version from https://pytorch.org/get-started/locally/
+torch==2.5.1

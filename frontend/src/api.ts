@@ -55,12 +55,37 @@ export type Prediction = {
     changes: { field: string; label: string; original: Json; current: Json }[]; is_original_run: boolean };
 };
 export type CompareRow = { id: string; label: string; region: string | null; issues: string[]; price: Price | null; status: string; fit?: Fit; hours?: number | null; cost?: number | null; runtime_missing?: string[] };
-export type BenchmarkPlan = { command: string; command_template: string; fingerprint: string; predicted_cost: BenchmarkCost; predicted_allocated_peak_gib: number;
-  requirements: { environment: string[]; files: { flag: string; required: boolean; provided: string[]; description: string }[]; credentials: string[]; warnings: string[] };
-  nebius: { available: boolean; reason: string; remaining_work: string[] } };
-export type BenchmarkResult = { kind: 'benchmark'; device: { name: string; type: string } | null; torch_version: string; model_source: string; user_code_executed: boolean; data_source: string;
-  seconds_per_optimizer_step: { median: number }; peak_memory_allocated_gib: number | null; peak_memory_reserved_gib: number | null; issues: string[]; notes: string[]; matches_current_config: boolean;
-  comparison: { peak_vram?: { predicted_gib: number; measured_reserved_gib: number; ratio_measured_to_predicted: number }; seconds_per_optimizer_step?: { predicted: number; measured_median: number } } };
+export type Provenance = 'detected' | 'user' | 'default' | 'assumption';
+export type BenchConfig = { [section: string]: Json };
+export type BenchMemory = { estimated_allocated_peak_gib: number; estimated_capacity_gib: number; safety_fraction: number; vram_gib: number | null; limit_gib: number | null; fits: boolean | null; rule: string };
+export type BenchAlternative = { gpu_id: string; platform: string; preset: string; label: string; vram_gib: number; fits: boolean | null };
+export type BenchHardware = { valid: boolean; reason?: string; gpu_id?: string; platform?: string; preset?: string; label?: string; vram_gib?: number; price?: Price | null; alternatives: BenchAlternative[] };
+export type BenchPrediction = { seconds_per_update: number | null; benchmark_compute_seconds: number | null; estimated_allocated_peak_gib: number; gpu_label?: string | null; note: string };
+export type BenchReview = {
+  target: 'local' | 'nebius'; ready: boolean; config: BenchConfig | null; draft: BenchConfig; provenance: Record<string, Provenance>; assumption_notes: Record<string, string>;
+  missing: { field: string; message: string }[]; errors: { field: string; message: string }[]; editable: string[]; applied_overrides: Record<string, Json>;
+  dropped_overrides: { field: string; value: Json; reason: string }[]; memory: BenchMemory | null; hardware: BenchHardware | null; fingerprint: string | null;
+  parameter_count?: number; prediction?: BenchPrediction; blockers?: string[]; warnings?: string[]; notes: string[];
+};
+export type BenchRunResult = {
+  status: 'succeeded' | 'failed'; smoke_test: boolean; failure: { type: string; message: string } | null; config_fingerprint: string | null; effective_config: BenchConfig | null;
+  timing?: { measured_training_seconds: number; mean_update_seconds: number; median_update_seconds: number; min_update_seconds: number; max_update_seconds: number };
+  counts?: Record<string, number>; throughput?: { tokens_per_second: number; sequences_per_second: number; units: string };
+  memory: { peak_allocated_bytes: number | null; peak_reserved_bytes: number | null }; durations: { startup_seconds: number | null; runner_wall_seconds: number | null };
+  hardware: { device_type: string | null; gpu_name: string | null; gpu_count_used: number | null; total_memory_bytes: number | null; compute_capability: string | null };
+  software: Record<string, string | null>; benchmark_code_version: string | null; finished_at: string | null;
+};
+export type BenchComparisonRow = { metric: string; predicted: number | null; measured: number | null; measured_label: string; ratio: number | null };
+export type BenchRecord = { kind: 'benchmark'; source: string; result: BenchRunResult; matches_current_config: boolean; prediction_for_config: BenchPrediction;
+  comparison: { compatible_for_calibration: boolean; rows: BenchComparisonRow[]; issues: string[]; labels: string[] };
+  full_run_projection: { optimizer_updates: number; hours: number; label: string } | null };
+export type BenchAllowance = { limit_usd: number; reserved_usd: number; used_estimated_usd: number; available_usd: number } | null;
+export type BenchStatus = { cloud_enabled: boolean; missing_configuration: string[]; provider: string; simulated: boolean; cancel_enabled: boolean; runner_max_seconds: number;
+  startup_grace_seconds: number; platform_timeout_hours: number; reservation_per_job_usd: number; active_jobs: number; global: BenchAllowance; session?: BenchAllowance; notes: string[] };
+export type BenchJob = { id: string; state: string; terminal: boolean; resumable: false; provider: string; simulated: boolean; platform: string; preset: string; provider_state: string | null;
+  provider_message: string | null; created_at: number; elapsed_seconds: number | null; provider_run_seconds: number | null; deadline_at: number; reserved_usd: number;
+  estimated_charge_usd: number | null; cost_label: string; error: { type: string; message: string } | null; results: BenchRunResult | null };
+export type BenchSession = { token: string; expires_at: number; display_name: string; note: string };
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 
@@ -80,9 +105,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return body as T;
 }
-const post = <T>(path: string, body: unknown) => request<T>(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const post = <T>(path: string, body: unknown, token?: string) => request<T>(path, { method: 'POST', headers: { 'Content-Type': 'application/json', ...auth(token) }, body: JSON.stringify(body) });
+const auth = (token?: string): Record<string, string> => (token ? { Authorization: `Bearer ${token}` } : {});
 
 export type ConfigBody = { values: Values; provenance: Record<string, unknown>; metadata: { acknowledged_conflicts: string[] } };
+export type BenchBody = ConfigBody & { overrides: Record<string, Json>; target: 'local' | 'nebius' };
 
 export const api = {
   schema: () => request<Schema>('/api/schema'),
@@ -101,12 +128,19 @@ export const api = {
   hardwareSearch: (q: string, offset = 0) => request<HardwareSearch>(`/api/hardware/search?q=${encodeURIComponent(q)}&limit=10&offset=${offset}`),
   hardwareOption: (optionId: string) => request<{ option: HardwareOption; values: Values; notes: string[] }>(`/api/hardware/options/${encodeURIComponent(optionId)}`),
   localCommand: () => request<{ linux: string; gpu_only: string; notes: string[] }>('/api/hardware/local-command'),
-  benchmarkPlan: (id: string, body: ConfigBody) => post<BenchmarkPlan>(`/api/analysis/${id}/benchmark/plan`, body),
-  benchmarkScript: async (id: string, body: ConfigBody): Promise<Blob> => {
-    const response = await fetch(`${apiBase}/api/analysis/${id}/benchmark/script`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!response.ok) { let m = `HTTP ${response.status}`; try { m = (await response.json()).detail ?? m; } catch { /* keep status */ } throw new Error(m); }
+  benchConfig: (id: string, body: BenchBody) => post<BenchReview>(`/api/analysis/${id}/benchmark/config`, body),
+  benchPackage: async (id: string, body: BenchBody): Promise<Blob> => {
+    const response = await fetch(`${apiBase}/api/analysis/${id}/benchmark/package`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!response.ok) { let m = `HTTP ${response.status}`; try { const d = (await response.json()).detail; m = typeof d === 'string' ? d : d?.message ?? m; } catch { /* keep status */ } throw new Error(m); }
     return response.blob();
   },
-  importBenchmark: (id: string, file: File) => { const f = new FormData(); f.append('file', file); return request<BenchmarkResult>(`/api/analysis/${id}/benchmark/import`, { method: 'POST', body: f }); },
+  benchImport: (id: string, body: BenchBody & { text?: string; job_id?: string }, token?: string) => post<BenchRecord>(`/api/analysis/${id}/benchmark/results`, body, token),
+  benchStatus: (token?: string) => request<BenchStatus>('/api/bench/status', { headers: auth(token) }),
+  benchLogin: (display_name: string, password: string) => post<BenchSession>('/api/bench/session', { display_name, password }),
+  benchSession: (token: string) => request<{ display_name: string; expires_at: number; allowance: BenchAllowance }>('/api/bench/session', { headers: auth(token) }),
+  benchSubmit: (token: string, body: BenchBody & { analysis_id: string; idempotency_key: string; confirm_charges: boolean }) => post<BenchJob>('/api/bench/jobs', body, token),
+  benchJob: (token: string, jobId: string) => request<BenchJob>(`/api/bench/jobs/${encodeURIComponent(jobId)}`, { headers: auth(token) }),
+  benchJobs: (token: string) => request<{ jobs: BenchJob[] }>('/api/bench/jobs', { headers: auth(token) }),
+  benchCancel: (token: string, jobId: string) => post<BenchJob>(`/api/bench/jobs/${encodeURIComponent(jobId)}/cancel`, {}, token),
   fileUrl: (id: string) => `${apiBase}/api/analysis/${id}/files/estimator_input.json`,
 };
