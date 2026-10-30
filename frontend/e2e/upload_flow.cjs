@@ -27,7 +27,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   await page.getByRole('button', { name: 'Open estimator' }).first().click();
   await page.getByText('Hugging Face model', { exact: true }).waitFor();
   const tabs = await page.getByRole('navigation', { name: 'Steps' }).innerText();
-  expect(!/\d\./.test(tabs) && /Workload/.test(tabs) && /Recommendations/.test(tabs), 'step tabs have no numbers');
+  expect(!/\d/.test(tabs) && /Workload/i.test(tabs) && /Recommendations/i.test(tabs), 'step tabs have no numbers');
   expect(await page.getByText(/upload a model config and\/or script/).isVisible() && await page.getByText('(only PyTorch is supported)').isVisible(), 'OR upload label under the HF box');
   await page.getByRole('button', { name: 'Preview GPT-2 small, supported settings' }).click();
   await page.getByRole('dialog').getByText(/n_layer/).waitFor();
@@ -189,6 +189,9 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
         parameter_changes: { 'training.microbatch_size': 8, 'training.gradient_accumulation_steps': 8 }, hardware_option_id: null, hardware: null, expected_effect: 'Less memory.',
         tradeoffs: ['Slightly more launches'], affected_files: [], issues: [], violations: [], estimable: true, applicable: true,
         new_values: { 'training.microbatch_size': 8, 'training.gradient_accumulation_steps': 8 }, estimate_note: null },
+      { id: 'seq', title: 'Shorter sequences', summary: 'Train on 512-token sequences: less memory and time.', category: 'sequence_length', explanation: 'Most examples are short.',
+        parameter_changes: { 'data.sequence_length': 512 }, hardware_option_id: null, hardware: null, expected_effect: 'Less memory.', tradeoffs: ['Shorter context'], affected_files: [],
+        issues: [], violations: [], estimable: true, applicable: true, new_values: { 'data.sequence_length': 512 }, estimate_note: null },
       { id: 'ckpt', title: 'Activation checkpointing', category: 'activation_checkpointing', explanation: 'Recompute activations in backward.', parameter_changes: {},
         hardware_option_id: null, hardware: null, expected_effect: 'Much less activation memory.', tradeoffs: ['~30% more compute'], affected_files: [], issues: [], violations: [],
         estimable: false, applicable: false, new_values: {}, estimate_note: 'Not estimated: this tool models single-GPU batch, sequence and hardware changes only.' },
@@ -210,20 +213,26 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   await page.getByRole('button', { name: 'Use example training script' }).click();
   await page.getByRole('list', { name: 'Code for review' }).getByText('train_baseline.py').waitFor();
   await page.getByRole('button', { name: 'Get recommendations' }).click();
-  await page.getByText('Your current plan').waitFor({ timeout: 10000 });
+  await page.getByText('Current plan', { exact: true }).waitFor({ timeout: 10000 });
   expect(adviceBody.preferences.goal === 'lowest_cost' && adviceBody.preferences.resources === 'alternatives' && 'train_baseline.py' in adviceBody.files
     && adviceBody.values['training.microbatch_size'] === 16, 'request carries goal, resources, extra code and final values');
   const recs = await page.locator('main').innerText();
-  expect(/Suggested changes/.test(recs) && /not estimated/i.test(recs), 'summaries and not-estimated label shown');
-  expect(/Approximate projection/i.test(recs) && /4 GPUs/i.test(recs) && /ZeRO-2/i.test(recs) && /deepspeed --num_gpus 4/.test(recs), 'strategy plan shows its approximate projection, steps and launch snippet');
-  await page.getByRole('button', { name: 'Recalculate estimate' }).first().click();
-  await page.getByText('Recalculated vs your original estimate').waitFor({ timeout: 20000 });
+  expect(!/Suggested changes/.test(recs) && /Plan only/i.test(recs) && /4 recommendations/i.test(recs), 'no suggestions summary; plan-only label and count shown');
+  expect(/Approximate projection/i.test(recs) && /4 GPUs/i.test(recs) && !/deepspeed --num_gpus 4/.test(recs), 'strategy card shows its projection with details collapsed');
+  await page.getByRole('button', { name: 'View implementation' }).click();
+  expect(/deepspeed --num_gpus 4/.test(await page.locator('main').innerText()), 'details open with steps and launch snippet in the same card');
+  await page.getByRole('button', { name: 'Hide details' }).click();
+  await page.getByLabel('Select Microbatch 8, accumulation 8').check();
+  await page.getByLabel('Select Shorter sequences').check();
+  await page.getByText('2 changes selected').waitFor();
+  await page.getByText(/Calculating the combined estimate/).waitFor({ state: 'detached', timeout: 20000 });
   await page.screenshot({ path: path.join(shots, '06-recommendations.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Apply changes' }).first().click();
+  await page.getByRole('button', { name: /Apply 2 changes/ }).click();
   await page.getByText(/usable VRAM limit per GPU \(/).waitFor({ timeout: 20000 });
   expect(await f('training.microbatch_size').count() === 0, 'apply re-ran the estimate on the results page');
   await page.getByRole('button', { name: 'Edit inputs' }).click();
-  expect(await f('training.microbatch_size').inputValue() === '8' && await f('training.gradient_accumulation_steps').inputValue() === '8', 'applied changes written to the form');
+  expect(await f('training.microbatch_size').inputValue() === '8' && await f('training.gradient_accumulation_steps').inputValue() === '8'
+    && await f('data.sequence_length').inputValue() === '512', 'both selected changes written to the form');
   await page.screenshot({ path: path.join(shots, '07-applied.png'), fullPage: true });
 
   const cacheDir = path.join(CACHE, analysisId);

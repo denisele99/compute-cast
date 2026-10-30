@@ -111,7 +111,7 @@ export function ResultsPage(props: {
   body: () => ConfigBody; onGoHardware: () => void;
 }): JSX.Element {
   const { mode, setMode, prediction } = props;
-  return <div className="space-y-3"><Section id="results" icon={Gauge} title="Results" hint="Memory fit, training time and cost.">
+  return <div className="space-y-3"><Section id="results" icon={Gauge} title="Estimate or benchmark" hint="Memory fit, training time and cost.">
     <div className="mb-4"><ModeToggle label="Results mode" value={mode} onChange={setMode} options={[
       { id: 'prediction', title: 'Estimate mode', description: 'Instant analytical prediction from your inputs. Nothing runs.', icon: Calculator },
       { id: 'benchmark', title: 'Benchmark mode', description: 'Measure real speed and memory on a GPU.', icon: FlaskConical }]} /></div>
