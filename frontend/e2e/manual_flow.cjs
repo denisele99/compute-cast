@@ -22,7 +22,7 @@ execFileSync('python3', ['-c', `import zipfile,sys; z=zipfile.ZipFile(sys.argv[1
   const f = (k) => page.locator('#field-' + k.replace(/\./g, '\\.'));
   await page.goto(BASE + '/');
   await page.getByRole('button', { name: 'Open estimator' }).first().click();
-  await page.getByText('A · Hugging Face model').waitFor();
+  await page.getByText('Hugging Face model', { exact: true }).waitFor();
   const options = await page.getByLabel('Hugging Face model').locator('option').allInnerTexts();
   expect(options.length === 2 && options[0].startsWith('openai-community/gpt2') && options[1].startsWith('distilbert/distilgpt2'), 'only the two supported HF models');
   await page.waitForTimeout(500);
@@ -45,7 +45,7 @@ execFileSync('python3', ['-c', `import zipfile,sys; z=zipfile.ZipFile(sys.argv[1
   await page.waitForTimeout(900);
   expect(await f('model.num_layers').inputValue() === '12', 'uploaded config.json now defines the model');
 
-  await page.getByRole('button', { name: 'GPT-2 with unsupported settings (shows conflicts)' }).click();
+  await page.getByRole('button', { name: 'GPT-2 with unsupported settings (shows conflicts)', exact: true }).click();
   await page.getByText('Unsupported settings in your files').waitFor();
   await page.waitForTimeout(800);
   const continueBtn = page.getByRole('button', { name: 'Continue to hardware' });
@@ -60,11 +60,11 @@ execFileSync('python3', ['-c', `import zipfile,sys; z=zipfile.ZipFile(sys.argv[1
   expect(!(await continueBtn.isDisabled()), 'continue enabled after choosing hypotheticals');
   await continueBtn.click();
 
-  await page.getByRole('button', { name: 'Custom GPU' }).click();
+  await page.getByRole('radio', { name: 'Custom GPU' }).click();
   await f('hardware.gpu_name').fill('My workstation GPU');
   await f('hardware.vram_gib').fill('24');
   await page.waitForTimeout(800);
-  expect(await f('hardware.usable_vram_gib').inputValue() === '24', 'usable limit defaults to VRAM for custom GPU');
+  expect(await f('hardware.usable_vram_gib').inputValue() === '21.6', 'usable limit defaults to 90% of VRAM for custom GPU');
   await page.getByRole('button', { name: 'Run estimate' }).click();
   await page.getByText(/usable VRAM limit per GPU \(/).waitFor({ timeout: 20000 });
   const res = await page.locator('#results').innerText();

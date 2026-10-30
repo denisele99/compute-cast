@@ -102,6 +102,25 @@ GPU-hour`. **Benchmark cost:** 3 warm-up + 10 measured updates (the benchmark de
   buttons; sample statistics behind a toggle; removable files and Hugging Face model; Execution
   assumptions panel; results rewired to the GPT-2 estimate.
 - Benchmark mode: the generated `run_benchmark.py` was replaced by the trusted `benchmark/` runner plus a validated `benchmark_config.json` (see BENCHMARK.md).
+- UI round 2: flow tabs (no numbers, arrows, icons) and plain-language section descriptions; the Hugging
+  Face box sits above "OR upload a model config and/or script (only PyTorch is supported)"; a Hugging
+  Face model can be combined with uploaded training scripts/configs (model settings in scripts are then
+  ignored; a second model config.json is still reported); example files can be previewed.
+- Hardware: autocomplete search over Nebius AI Cloud and the GPU catalogue, plus a dropdown of every
+  pre-loaded GPU; field "GPU name"; price defaults to $0; peak TFLOPS/bandwidth/BF16 moved to optional
+  "Advanced hardware settings". Nebius platforms missing from `nebius_platforms.json` (B200, B300,
+  RTX PRO 6000) get GPU memory from `hardware_catalog.json` (new memory-only entries, pending review).
+- Results: the simplified equations with your numbers moved under "How we calculated this"; values show a
+  change marker (arrow, amount and %) against the original estimate. Benchmark setup review is
+  collapsible ("Review benchmark setup (benchmark_config.json)", open by default).
+- Recommendations: powered by NVIDIA Nemotron 3 Super via Nebius Token Factory (`NEBIUS_API_KEY`).
+  The user picks a goal, hardware scope, what must stay the same, and an optional budget/GPU limit, and
+  can add code (an example training script is provided). The model gets the final validated inputs, the
+  current estimate, allowed alternative GPUs with their estimates, and the code. Its parameter changes are
+  re-checked on the server; only single-GPU batch/accumulation/sequence/hardware changes are "estimated",
+  others (checkpointing, FSDP/ZeRO, tensor/pipeline parallelism...) are labelled "not estimated".
+  Recalculate compares with the original; Apply writes the form, saves the values and re-estimates (the
+  original snapshot is kept); download gives edited code (if proposed) plus a training/model config.
 - Legacy (kept, marked "LEGACY - NOT USED BY THE GPT-2 MVP", still tested in `tests/test_legacy.py`):
   MLP/classic-transformer profiles, `gpu_memory.py`, `gpu_runtime.py`, `estimator.py`,
   `normalize_inputs.py`, `collect_workload.py`, legacy mappers in `static_extract.py`.
@@ -109,6 +128,8 @@ GPU-hour`. **Benchmark cost:** 3 warm-up + 10 measured updates (the benchmark de
 ## Known gaps
 
 - Coefficients are uncalibrated; validate against benchmarks before trusting absolute numbers.
-- GPU specs for H100/H200/L40S are `pending_review`; B200, B300, GB300 and RTX PRO 6000 have no specs, so
-  only memory is estimated for them.
+- GPU specs for H100/H200/L40S are `pending_review`; B200, B300 and RTX PRO 6000 have catalogue memory only
+  (official datasheets could not be checked), GB300 has no catalogue entry; only memory is estimated for them
+  unless you enter peak TFLOPS and bandwidth under Advanced hardware settings.
+- Recommendations need a Token Factory key; model output quality has only been checked with mocked answers.
 - Nebius execution is not implemented; analysis sessions are in memory (single worker, lost on restart).

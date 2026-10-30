@@ -1,6 +1,7 @@
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { BenchBody, BenchJob, BenchRecord, BenchReview, BenchStatus, ConfigBody, Json, Provenance, api } from '../api';
-import { Accordion, Alert, Badge, CopyBlock, IconTip, Section, Unavailable } from '../components/ui';
+import { ChevronDown, ClipboardList, Cloud, Laptop, Scale } from 'lucide-react';
+import { Accordion, Alert, Badge, CopyBlock, IconTip, ModeToggle, Section, Unavailable } from '../components/ui';
 import { gib, money } from './Results';
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -95,7 +96,7 @@ function JobCard({ job, now, canCancel, onCancel }: { job: BenchJob; now: number
 }
 
 export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { analysisId: string; body: () => ConfigBody; ready: boolean; onGoHardware: () => void }): JSX.Element {
-  const [target, setTarget] = useState<'local' | 'nebius'>('local');
+  const [target, setTarget] = useState<'local' | 'nebius'>('nebius'); const [reviewOpen, setReviewOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, Json>>({});
   const [review, setReview] = useState<BenchReview | null>(null); const [reviewError, setReviewError] = useState('');
   const [records, setRecords] = useState<BenchRecord[]>([]); const [importBusy, setImportBusy] = useState(false); const [importError, setImportError] = useState('');
@@ -164,13 +165,19 @@ export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { anal
   const cloudReady = status?.cloud_enabled && status.missing_configuration.length === 0;
 
   return <div className="space-y-4">
-    <Alert kind="info">A benchmark runs real training updates of the trusted GPT-2 runner on <strong>one GPU</strong> with <strong>synthetic token ids</strong> and random weights. It measures speed and memory only: real data loading and model quality are not measured. Your uploaded files are never executed. Measurements appear beside the estimate; the estimate itself is not changed.</Alert>
+    <p className="text-xs text-[#a7a0bb]">Measures real speed and memory on one GPU with synthetic data. Your files are never executed.</p>
     {!ready && <Alert kind="warn">Complete the workload (a successful estimate) first; the benchmark uses the same configuration.</Alert>}
-    <div className="flex gap-1" role="tablist" aria-label="Benchmark target">{([['local', 'Your GPU (download)'], ['nebius', 'Nebius AI Cloud']] as const).map(([t, l]) =>
-      <button key={t} role="tab" aria-selected={target === t} onClick={() => setTarget(t)} className={`border px-3 py-1 text-xs ${target === t ? 'border-violet bg-violet/15' : 'border-line text-[#a7a0bb]'}`}>{l}</button>)}</div>
+    <div><p className="eyebrow mb-2">Where should the benchmark run?</p>
+      <ModeToggle label="Benchmark target" value={target} onChange={setTarget} options={[
+        { id: 'nebius', title: 'Nebius AI Cloud', description: 'We start a 1-GPU job for you and collect the results.', icon: Cloud },
+        { id: 'local', title: 'Your GPU', description: 'Download a package, run it yourself, import results.json.', icon: Laptop }]} /></div>
     {reviewError && <Alert kind="error">{reviewError}</Alert>}
 
-    {review && <Section number="B1" title="Review benchmark_config.json" hint="validated by the same registry the runner uses">
+    {review && <Section icon={ClipboardList} title="Review benchmark setup" hint="Your workload inputs, plus defaults and assumptions where you gave none."
+      actions={<button type="button" aria-expanded={reviewOpen} aria-controls="bench-review" onClick={() => setReviewOpen(!reviewOpen)} className="flex items-center gap-1 border border-line px-2 py-1 text-xs">
+        <ChevronDown size={12} className={reviewOpen ? 'rotate-180' : ''} aria-hidden />{reviewOpen ? 'Hide' : 'Show'} setup</button>}>
+      {!reviewOpen && <p className="text-xs text-[#a7a0bb]">{review.ready ? 'Setup is valid and ready.' : `${review.missing.length + review.errors.length + (review.blockers?.length ?? 0)} item(s) need attention.`} Open to review or edit.</p>}
+      {reviewOpen && <div id="bench-review">
       <ConfigReview review={review} overrides={overrides} onEdit={edit} onReset={() => setOverrides({})} />
       {review.config && <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <div className="border border-line p-2"><p className="eyebrow">Memory check</p>{review.memory && <><p><strong>{gib(review.memory.estimated_capacity_gib)}</strong> needed{review.memory.limit_gib !== null ? ` of ${gib(review.memory.limit_gib)} limit` : ''}</p>
@@ -181,9 +188,10 @@ export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { anal
         <div className="border border-line p-2"><p className="eyebrow">Model</p><p>{review.parameter_count?.toLocaleString()} parameters</p><p className="text-[10px] text-[#8e899b] break-all">fingerprint {review.fingerprint?.slice(0, 16)}…</p></div></div>}
       {(review.blockers ?? []).map((b) => <div key={b} className="mt-2"><Alert kind="error">{b}</Alert></div>)}
       {(review.warnings ?? []).map((w) => <div key={w} className="mt-2"><Alert kind="warn">{w}</Alert></div>)}
+      </div>}
     </Section>}
 
-    {target === 'local' && <Section number="B2" title="Run on your GPU">
+    {target === 'local' && <Section icon={Laptop} title="Run on your GPU">
       <div className="space-y-2 text-xs">
         <button type="button" onClick={() => void download()} disabled={!review?.config} className="bg-white px-4 py-2 text-xs font-semibold text-black disabled:opacity-40">Download local benchmark package</button>
         <p className="text-[#c4bfcd]">The ZIP contains the same trusted runner, model code, pinned requirements and README as the cloud image, plus your <span className="font-mono">benchmark_config.json</span>. No credentials are needed.</p>
@@ -195,15 +203,13 @@ export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { anal
         <ImportResults onImport={(t) => void importText(t)} busy={importBusy} error={importError} />
       </div></Section>}
 
-    {target === 'nebius' && <Section number="B2" title="Run on Nebius AI Cloud" hint="one GPU, asynchronous">
+    {target === 'nebius' && <Section icon={Cloud} title="Run on Nebius AI Cloud">
       <div className="space-y-2 text-xs">
         {statusError && <Alert kind="error">{statusError}</Alert>}
-        {status && !status.cloud_enabled && <Unavailable label="Switched off">Cloud benchmarks are disabled on this server. Use the local package instead.</Unavailable>}
+        {status && !status.cloud_enabled && <Unavailable label="Switched off">Cloud benchmarks are off on this server. To turn them on, set <span className="font-mono">BENCH_CLOUD_ENABLED=1</span> on the backend after the Nebius settings pass <span className="font-mono">scripts/check_nebius.py</span>.</Unavailable>}
         {status && status.cloud_enabled && status.missing_configuration.length > 0 && <Unavailable label="Not configured">The server is missing: {status.missing_configuration.join(', ')}.</Unavailable>}
         {status?.simulated && <Alert kind="warn">This server uses a <strong>simulated provider</strong> for testing. No Nebius job runs and no real results are produced.</Alert>}
-        {status && <ul className="list-disc pl-4 text-[11px] text-[#a7a0bb]"><li>Runner limit {status.runner_max_seconds} s plus up to {Math.round(status.startup_grace_seconds / 60)} min for provisioning and image pull; the backend cancels jobs past that. Platform timeout backstop: {status.platform_timeout_hours} h.</li>
-          <li>Each job reserves {money(status.reservation_per_job_usd)} of your session allowance until it finishes. One GPU job runs at a time across all users ({status.active_jobs} active).</li>
-          {status.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+        {(status?.image_warnings ?? []).map((w) => <Alert key={w} kind="warn">{w}</Alert>)}
         {cloudReady && !token && <form className="flex flex-wrap items-end gap-2 border border-line p-2" onSubmit={(e) => { e.preventDefault(); void login(); }}>
           <label className="text-[11px]">Display name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} className="mt-0.5 block border border-line bg-black/40 px-2 py-1 text-xs" /></label>
           <label className="text-[11px]">Demo password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-0.5 block border border-line bg-black/40 px-2 py-1 text-xs" /></label>
@@ -225,7 +231,7 @@ export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { anal
         </>}
       </div></Section>}
 
-    {records.length > 0 && <Section number="B3" title="Predicted vs measured" hint="original estimates are preserved">
+    {records.length > 0 && <Section icon={Scale} title="Predicted vs measured">
       <div className="space-y-2">{records.map((r, i) => <Comparison key={i} r={r} />)}</div></Section>}
     <Accordion title="What the benchmark measures" hint="scope and exclusions">
       <ul className="list-disc space-y-0.5 pl-4 text-[11px] text-[#c4bfcd]"><li>Timed: complete optimizer updates (forward, FP32 loss, backward for every accumulation microbatch, AdamW step) after warm-up, between GPU synchronisations.</li>

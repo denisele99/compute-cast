@@ -91,6 +91,9 @@ def summarize(result):
     return {'status': 'ok', 'capacity_gib': result['fit']['capacity_gib'],
             'allocated_peak_gib': result['memory']['estimated_allocated_peak'], 'fits': result['fit']['fits'],
             'training_hours': (runtime.get('total_training_compute') or {}).get('seconds', 0) / 3600 if runtime else None,
+            'seconds_per_update': runtime.get('seconds_per_full_optimizer_update') if runtime else None,
+            'optimizer_updates': (runtime.get('total_training_compute') or {}).get('optimizer_updates') if runtime else None,
+            'percent_of_usable': result['fit']['percent_of_usable'], 'parameters': result.get('parameters'),
             'cost': (result.get('cost') or {}).get('cost')}
 
 

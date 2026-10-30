@@ -14,6 +14,14 @@ def search(q: str = Query('', max_length=100), limit: int = Query(10, ge=1, le=1
     return lookup.search(q, limit, offset)
 
 
+@router.get("/options")
+def all_options():
+    """GPU dropdown groups: Nebius AI Cloud (with catalogue specs) and catalogue-only GPUs, runtime-complete only."""
+    keep = ('id', 'provider', 'platform', 'label', 'vram_gib', 'price')
+    groups = lookup.choices()
+    return {group: [{k: r[k] for k in keep} for r in rows] for group, rows in groups.items()} | {'price_snapshot': lookup.prices()[1]}
+
+
 @router.get("/options/{option_id}")
 def option(option_id: str):
     """Autofill values (GPT-2 MVP keys) for one result. Specs come from the general catalogue,

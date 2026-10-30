@@ -116,6 +116,78 @@
         "review_status": "pending_review",
         "note": "Values transcribed from NVIDIA's public datasheet (dense, i.e. without sparsity) without live re-verification; review before relying on them."
       }
+    },
+    "nvidia_b200_sxm_180gb": {
+      "name": "NVIDIA B200 SXM 180GB",
+      "manufacturer": "NVIDIA",
+      "architecture": "Blackwell",
+      "form_factor": "SXM",
+      "memory": {
+        "advertised_capacity_gb": 180,
+        "type": "HBM3e",
+        "bandwidth_gb_per_second": 8000
+      },
+      "peak_compute_tflops": {
+        "fp32": 75,
+        "fp16_tensor_dense": 2250,
+        "bf16_tensor_dense": 2250,
+        "tf32_tensor_dense": 1125
+      },
+      "source": {
+        "url": "https://www.nvidia.com/en-us/data-center/hgx/",
+        "section": "HGX B200 specifications; DGX B200 GPU memory",
+        "last_verified": "2026-10-30",
+        "review_status": "verified",
+        "note": "Per GPU = 8-GPU system value / 8. HGX B200: FP16/BF16 Tensor Core 36 PFLOPS and TF32 18 PFLOPS are sparse (footnote: dense is 1/2 of the sparse spec), FP32 600 TFLOPS. DGX B200: 1,440 GB total, 64 TB/s HBM3e."
+      }
+    },
+    "nvidia_b300_sxm_288gb": {
+      "name": "NVIDIA B300 SXM 288GB",
+      "manufacturer": "NVIDIA",
+      "architecture": "Blackwell Ultra",
+      "form_factor": "SXM",
+      "memory": {
+        "advertised_capacity_gb": 288,
+        "type": "HBM3e",
+        "bandwidth_gb_per_second": null
+      },
+      "peak_compute_tflops": {
+        "fp32": null,
+        "fp16_tensor_dense": null,
+        "bf16_tensor_dense": null,
+        "tf32_tensor_dense": null
+      },
+      "source": {
+        "url": "https://www.nvidia.com/en-us/data-center/hgx/",
+        "section": "Specifications",
+        "last_verified": null,
+        "review_status": "pending_review",
+        "note": "HGX B300 lists BF16 36 PFLOPS sparse and FP32 600 TFLOPS per 8 GPUs, but no per-GPU memory bandwidth (datasheet not reachable), so runtime fields are left empty."
+      }
+    },
+    "nvidia_rtx_pro_6000_server_96gb": {
+      "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition 96GB",
+      "manufacturer": "NVIDIA",
+      "architecture": "Blackwell",
+      "form_factor": "PCIe",
+      "memory": {
+        "advertised_capacity_gb": 96,
+        "type": "GDDR7",
+        "bandwidth_gb_per_second": 1597
+      },
+      "peak_compute_tflops": {
+        "fp32": 120,
+        "fp16_tensor_dense": null,
+        "bf16_tensor_dense": null,
+        "tf32_tensor_dense": null
+      },
+      "source": {
+        "url": "https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/",
+        "section": "Specifications",
+        "last_verified": "2026-10-30",
+        "review_status": "pending_review",
+        "note": "96 GB GDDR7, 1597 GB/s and FP32 120 TFLOPS from NVIDIA's page. BF16 is listed as '1 PFLOP' without saying whether it is sparse or dense, so it is left empty; runtime needs it."
+      }
     }
   }
 }

@@ -18,6 +18,8 @@ from .store import TERMINAL, AllowanceExceeded, ConcurrencyLimit, dumps
 log = logging.getLogger('compute_cast.bench')
 GLOBAL_KEY = 'global'
 RECONCILE_AFTER_SECONDS = 60
+# A bucket-mounted results.json can be read before the mount has finished uploading it (empty or truncated).
+RESULTS_SETTLE_SECONDS = 120
 
 
 class JobError(Exception):
@@ -33,6 +35,7 @@ def provider_name(job_id):
 class JobService:
     def __init__(self, store, policy, client, result_store, clock=time.time):
         self.store, self.policy, self.client, self.result_store, self.clock = store, policy, client, result_store, clock
+        self._collecting_since = {}  # job id -> first time an unreadable results.json was seen (process-local)
         store.ensure_allowance(GLOBAL_KEY, policy.global_allowance_usd)
 
     # -- helpers ----------------------------------------------------------------------------
@@ -54,6 +57,7 @@ class JobService:
                'platform_timeout_hours': p.platform_timeout_hours, 'reservation_per_job_usd': self.reservation_usd(),
                'active_jobs': len(self.store.active_jobs()), 'max_concurrent_jobs': 1,
                'allowed_platforms': p.allowed_platforms, 'global': self._allowance(GLOBAL_KEY),
+               'image': p.image, 'image_warnings': p.image_warnings(),
                'notes': ['Allowances are reservations inside Compute Cast, not a Nebius spending cap.',
                          'Nebius budget alerts notify; they do not stop spending. No maximum bill is guaranteed.']}
         if session:
@@ -185,6 +189,15 @@ class JobService:
                                 f'Provider state {status.state}{detail}; no results.json was written. {status.message}'.strip()}, **fields)
         try:
             parsed = RS.parse(raw)
+        except RS.ResultDecodeError as exc:
+            since = self._collecting_since.setdefault(job['id'], now)
+            if now - since < RESULTS_SETTLE_SECONDS:
+                return self.store.update_job(job['id'], state='collecting', **{
+                    **fields, 'provider_message': f'Waiting for results.json to finish uploading ({exc})'[:300]})
+            self._collecting_since.pop(job['id'], None)
+            return self._finish(job, 'failed', charge, error={'type': 'invalid_results', 'message':
+                                f'{exc} The file was still unreadable {RESULTS_SETTLE_SECONDS} s after the job finished. '
+                                f'{self._log_note(job)}'.strip()}, **fields)
         except RS.ResultError as exc:
             return self._finish(job, 'failed', charge, error={'type': 'invalid_results', 'message': str(exc)}, **fields)
         if parsed['config_fingerprint'] and parsed['config_fingerprint'] != job['fingerprint']:
@@ -196,6 +209,20 @@ class JobService:
             error = parsed['failure']
         return self._finish(job, state, charge, error=error, results=parsed, **fields)
 
+    def _log_note(self, job):
+        """Where the results live, plus the tail of benchmark.log when it can be read (diagnostics only)."""
+        where = f"Bucket path: {self.source_path(job['id'])}/ (results.json, benchmark.log)."
+        try:
+            tail = self.result_store.fetch_log_tail(self.source_path(job['id']))
+        except Exception as exc:
+            return f'{where} benchmark.log not readable ({type(exc).__name__}).'
+        if tail is None:
+            return f'{where} benchmark.log is missing too: the runner wrote nothing to the bucket.'
+        if not tail.strip():
+            return f'{where} benchmark.log is empty too: files on the bucket mount were not flushed (runner image older than 0.1.1?).'
+        text = tail.decode('utf-8', 'replace').strip().splitlines()[-3:]
+        return f"{where} Last benchmark.log lines: {' | '.join(text)}"[:600]
+
     def _charge(self, status, now):
         """Estimated (not billed) cost from provider start/finish timestamps at the reservation rate."""
         if not status.started_at:
@@ -204,6 +231,7 @@ class JobService:
         return seconds / 3600 * self.policy.reservation_usd_per_gpu_hour
 
     def _finish(self, job, state, charged, error=None, results=None, **fields):
+        self._collecting_since.pop(job['id'], None)
         extra = dict(fields)
         if error is not None:
             extra['error_json'] = dumps(error)

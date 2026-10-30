@@ -122,7 +122,7 @@ All of the steps below run from `benchmark/`.
 1. Build the image.
 
    ```bash
-   docker build -t compute-cast-bench:0.1.0 .
+   docker build -t compute-cast-bench:0.1.1 .
    ```
 
 2. Run a local CPU smoke test with the example config. Bind-mount the config directory and an
@@ -133,23 +133,23 @@ All of the steps below run from `benchmark/`.
    ```
 
    ```bash
-   docker run --rm -v /tmp/benchmark_config.json:/config/benchmark_config.json:ro -v /tmp/cc-results:/results compute-cast-bench:0.1.0 --config /config/benchmark_config.json --output-dir /results --cpu-smoke --max-seconds 600
+   docker run --rm -v /tmp/benchmark_config.json:/config/benchmark_config.json:ro -v /tmp/cc-results:/results compute-cast-bench:0.1.1 --config /config/benchmark_config.json --output-dir /results --cpu-smoke --max-seconds 600
    ```
 
 3. Optionally, run a GPU test on a machine with the NVIDIA Container Toolkit installed.
 
    ```bash
-   docker run --rm --gpus 1 -v /tmp/benchmark_config.json:/config/benchmark_config.json:ro -v /tmp/cc-results:/results compute-cast-bench:0.1.0
+   docker run --rm --gpus 1 -v /tmp/benchmark_config.json:/config/benchmark_config.json:ro -v /tmp/cc-results:/results compute-cast-bench:0.1.1
    ```
 
 4. Publish the image to your Nebius Container Registry. Replace `<registry-id>` with your own.
 
    ```bash
-   docker tag compute-cast-bench:0.1.0 cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.0
+   docker tag compute-cast-bench:0.1.1 cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.1
    ```
 
    ```bash
-   docker push cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.0
+   docker push cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.1
    ```
 
    Use your region's hostname: `cr.<region>.nebius.cloud`, for example `cr.eu-north1`,
@@ -159,10 +159,12 @@ All of the steps below run from `benchmark/`.
 5. Pin the image by digest. Use an **immutable** reference in the backend, never a mutable tag.
 
    ```bash
-   docker inspect --format '{{index .RepoDigests 0}}' cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.0
+   docker inspect --format '{{index .RepoDigests 0}}' cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.1
    ```
 
-   Set `BENCH_IMAGE=cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench@sha256:<digest>` on
+   The project's image, pushed as `benchmark:v1`, is pinned as the backend default (used when
+   `BENCH_IMAGE` is unset): `cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9`. Pin it as
+   `BENCH_IMAGE=cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:<digest>` on
    the backend. For full reproducibility, also pin the `FROM` line by digest; see the comment in
    the `Dockerfile`.
 

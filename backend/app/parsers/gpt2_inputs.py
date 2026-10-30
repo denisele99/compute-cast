@@ -18,6 +18,7 @@ from ..services.estimators.estimate_gpt2 import DEFAULT_POLICY
 
 CONTRACT = Path(__file__).resolve().parents[2] / 'data' / 'mvp_feature_contract.json'
 SECTIONS = ('model', 'training', 'data', 'hardware')
+USABLE_FRACTION = 0.9  # default usable VRAM limit as a share of total VRAM
 
 
 def F(key, label, kind, section, *, editable=True, contract=None, unit=None, help=None, default=None,
@@ -62,18 +63,24 @@ FIELDS = [
     F('data.sequence_length', 'Sequence length (padded)', 'int', 'data', contract='sequence_length', minimum=1,
       help='Fixed executed length (padding to max_length); must not exceed max positions.'),
     F('hardware.source', 'Hardware source', 'select', 'hardware', options=['nebius', 'catalog', 'custom']),
-    F('hardware.gpu_id', 'GPU', 'text', 'hardware', contract='gpu_id', help='Catalogue selection or custom GPU.'),
-    F('hardware.gpu_name', 'GPU name', 'text', 'hardware'),
+    F('hardware.gpu_name', 'GPU name', 'text', 'hardware', help='Filled when you pick a GPU above; type a name for a custom GPU.'),
+    F('hardware.gpu_id', 'GPU id', 'text', 'hardware', contract='gpu_id', advanced=True,
+      help='Internal id of the selected catalogue/Nebius entry, or "custom".'),
     F('hardware.catalog_gpu_id', 'Spec catalogue id', 'text', 'hardware', advanced=True),
     F('hardware.vram_gib', 'VRAM per GPU', 'float', 'hardware', unit='GiB', minimum=0),
     F('hardware.usable_vram_gib', 'Usable VRAM limit', 'float', 'hardware', unit='GiB', minimum=0,
-      help='Defaults to 100% of VRAM: the estimate already adds a runtime baseline and margin.'),
-    F('hardware.bf16_supported', 'Native BF16 support', 'bool', 'hardware'),
-    F('hardware.bf16_dense_tflops', 'Peak BF16 dense', 'float', 'hardware', unit='TFLOPS', minimum=0),
-    F('hardware.fp32_tflops', 'Peak FP32', 'float', 'hardware', unit='TFLOPS', minimum=0),
-    F('hardware.memory_bandwidth_gbps', 'Memory bandwidth', 'float', 'hardware', unit='GB/s', minimum=0),
-    F('hardware.price_per_hour', 'Price', 'float', 'hardware', unit='USD', minimum=0),
-    F('hardware.price_unit', 'Price unit', 'select', 'hardware', options=['gpu_hour', 'instance_hour'],
+      help='How much of the VRAM training may use. Defaults to 90% of VRAM.'),
+    F('hardware.bf16_supported', 'Native BF16 support', 'bool', 'hardware', advanced=True,
+      help='Optional. Filled from the GPU catalogue; needed only for the runtime estimate.'),
+    F('hardware.bf16_dense_tflops', 'Peak BF16 dense', 'float', 'hardware', unit='TFLOPS', minimum=0, advanced=True,
+      help='Optional. Filled from the GPU catalogue; needed only for the runtime estimate.'),
+    F('hardware.fp32_tflops', 'Peak FP32', 'float', 'hardware', unit='TFLOPS', minimum=0, advanced=True,
+      help='Optional. Filled from the GPU catalogue; needed only for the runtime estimate.'),
+    F('hardware.memory_bandwidth_gbps', 'Memory bandwidth', 'float', 'hardware', unit='GB/s', minimum=0, advanced=True,
+      help='Optional. Filled from the GPU catalogue; needed only for the runtime estimate.'),
+    F('hardware.price_per_hour', 'Price', 'float', 'hardware', unit='USD', minimum=0, default=0,
+      help='Price per GPU-hour. 0 until you pick a priced Nebius GPU or type your own price.'),
+    F('hardware.price_unit', 'Price unit', 'select', 'hardware', options=['gpu_hour', 'instance_hour'], default='gpu_hour',
       help='One GPU in v1, so a 1-GPU instance-hour equals a GPU-hour.'),
     F('hardware.price_region', 'Price region', 'text', 'hardware', advanced=True),
     F('hardware.price_note', 'Price note', 'text', 'hardware', advanced=True),
@@ -156,6 +163,8 @@ def validate(values, provenance=None, extraction=None, acknowledged=None):
         v[key] = value
     if v['model.model_type'] is None:
         v['model.model_type'] = 'gpt2'
+    if v['hardware.usable_vram_gib'] is None and v['hardware.vram_gib']:
+        v['hardware.usable_vram_gib'] = round(USABLE_FRACTION * v['hardware.vram_gib'], 2)
     mode = v['training.duration_mode'] or 'epochs'
     required = {}
 
@@ -242,7 +251,7 @@ def validate(values, provenance=None, extraction=None, acknowledged=None):
 
     suggestions = {}
     if total:
-        suggestions['hardware.usable_vram_gib'] = {'value': total, 'reason': 'Default: 100% of VRAM (margin is in the estimate).'}
+        suggestions['hardware.usable_vram_gib'] = {'value': round(USABLE_FRACTION * total, 2), 'reason': 'Default: 90% of VRAM.'}
     blocked = bool(errors) or any('memory' in m['required_for'] for m in missing)
     can = {'memory': not blocked}
     can['runtime'] = can['memory'] and not any('runtime' in m['required_for'] for m in missing)

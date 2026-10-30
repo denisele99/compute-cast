@@ -28,7 +28,7 @@ def hardware_values(option):
               'hardware.price_note': None}
     if option.get('vram_gib') is not None:
         values['hardware.vram_gib'] = float(option['vram_gib'])
-        values['hardware.usable_vram_gib'] = float(option['vram_gib'])
+        values['hardware.usable_vram_gib'] = round(G.USABLE_FRACTION * float(option['vram_gib']), 2)
     price = option.get('price')
     if price and price['value'] is not None and price['unit']:
         one_gpu = [p for p in option.get('presets', []) if p.get('gpu_count') == 1]

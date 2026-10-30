@@ -6,7 +6,14 @@ are read here and never returned by any API, written to configs, packages or log
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
+
+# The project's benchmark runner image in Nebius Container Registry (eu-north1). Same-project registry
+# images need no pull credentials. Pinned by digest (the image pushed as benchmark:v1). Override with
+# BENCH_IMAGE, using an @sha256:<digest> reference, when you publish a new runner image.
+DEFAULT_IMAGE = 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9'
+DIGEST = re.compile(r'@sha256:[0-9a-f]{64}$')
 
 
 def _f(name, default):
@@ -72,6 +79,20 @@ class Policy:
                 need['NEBIUS_SERVICE_ACCOUNT_ID + NEBIUS_PUBLIC_KEY_ID + NEBIUS_PRIVATE_KEY_FILE'] = None
         return [k for k, v in need.items() if not v]
 
+    def image_warnings(self):
+        """Advisory checks on the job image reference (never blocks submission)."""
+        if not self.image:
+            return []
+        out = []
+        if not DIGEST.search(self.image):
+            out.append('BENCH_IMAGE uses a tag, which can be overwritten. Pin it as <image>@sha256:<digest> '
+                       'so every job runs exactly the image you tested.')
+        host = self.image.split('/', 1)[0]
+        if host.startswith('cr.') and host.endswith('.nebius.cloud') and self.registry_secret_version:
+            out.append('Images in Nebius Container Registry in the same project need no pull credentials; '
+                       'NEBIUS_REGISTRY_SECRET_VERSION is only for other registries.')
+        return out
+
 
 def parse_platforms(text):
     out = {}
@@ -82,8 +103,16 @@ def parse_platforms(text):
     return out
 
 
+def _env(name, default=None):
+    """Environment value, treating empty strings and template placeholders such as '<id>' as unset."""
+    value = os.environ.get(name, default)
+    if value is None or not value.strip() or ('<' in value and '>' in value):
+        return default if default is not None and not ('<' in default) else None
+    return value.strip()
+
+
 def load_policy() -> Policy:
-    env = os.environ.get
+    env = _env
     return Policy(
         cloud_enabled=_b('BENCH_CLOUD_ENABLED'), backend=env('BENCH_NEBIUS_BACKEND', 'sdk'),
         demo_password=env('BENCH_DEMO_PASSWORD') or None, session_secret=env('BENCH_SESSION_SECRET') or None,
@@ -95,7 +124,7 @@ def load_policy() -> Policy:
         runner_max_seconds=_f('BENCH_RUNNER_MAX_SECONDS', 300), startup_grace_seconds=_f('BENCH_STARTUP_GRACE_SECONDS', 900),
         platform_timeout_hours=max(1, int(_f('BENCH_PLATFORM_TIMEOUT_HOURS', 1))),
         poll_min_interval_seconds=_f('BENCH_POLL_MIN_INTERVAL_SECONDS', 10), memory_safety_fraction=_f('BENCH_MEMORY_SAFETY_FRACTION', 0.10),
-        image=env('BENCH_IMAGE') or None,
+        image=env('BENCH_IMAGE') or DEFAULT_IMAGE,
         allowed_platforms=parse_platforms(env('BENCH_ALLOWED_PLATFORMS', 'gpu-h100-sxm:1gpu-16vcpu-200gb,'
                                               'gpu-h200-sxm:1gpu-16vcpu-200gb,gpu-l40s-a:1gpu-8vcpu-32gb,gpu-l40s-d:1gpu-16vcpu-96gb')),
         preemptible=_b('BENCH_PREEMPTIBLE'), project_id=env('NEBIUS_PROJECT_ID') or None,

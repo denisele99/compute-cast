@@ -22,6 +22,11 @@ NEBIUS_PLATFORM_TO_GPU_ID = {
     'gpu-h200-sxm': 'nvidia_h200_sxm_141gb',
     'gpu-l40s-a': 'nvidia_l40s_48gb',
     'gpu-l40s-d': 'nvidia_l40s_48gb',
+    'gpu-b200-sxm': 'nvidia_b200_sxm_180gb',
+    'gpu-b200-sxm-a': 'nvidia_b200_sxm_180gb',
+    'gpu-b300-sxm': 'nvidia_b300_sxm_288gb',
+    'gpu-rtx6000': 'nvidia_rtx_pro_6000_server_96gb',
+    'gpu-rtx6000-a': 'nvidia_rtx_pro_6000_server_96gb',
 }
 PRICE_UNITS = {'gpu hour': 'gpu_hour', 'gpu-hour': 'gpu_hour', 'instance hour': 'instance_hour',
                'hour': 'instance_hour'}
@@ -112,12 +117,15 @@ def options():
             continue
         for item in items:
             title = str(item.get('productTitle', name)).replace('Preemptible ', '')
+            specs = _specs(NEBIUS_PLATFORM_TO_GPU_ID.get(name))
+            # Platform missing from nebius_platforms.json: fill GPU memory from the general catalogue.
+            vram = specs['vram_gib'] if specs else None
             rows.append({'provider': 'nebius', 'platform': name, 'id': f"nebius:{name}:{item.get('region')}",
-                         'label': title, 'vram_gib': None, 'vram_source': None, 'presets': [],
-                         'specs': _specs(NEBIUS_PLATFORM_TO_GPU_ID.get(name)),
-                         'price': _price(item, snapshot),
-                         'issues': ['Platform is priced but missing from nebius_platforms.json: '
-                                    'GPU memory unknown, enter it manually.']})
+                         'label': title, 'vram_gib': vram,
+                         'vram_source': 'hardware_catalog.json advertised_capacity_gb (platform not in nebius_platforms.json)'
+                         if vram else None, 'presets': [], 'specs': specs, 'price': _price(item, snapshot),
+                         'issues': [] if vram else ['Platform is priced but missing from nebius_platforms.json: '
+                                                     'GPU memory unknown, enter it manually.']})
     for gpu_id in catalog():
         spec = _specs(gpu_id)
         rows.append({'provider': 'catalog', 'platform': None, 'id': f'catalog:{gpu_id}',
@@ -129,12 +137,33 @@ def options():
         if row['specs'] is None:
             row['issues'].append('No general-catalogue specs (peak TFLOPS, bandwidth): runtime needs '
                                  'them entered manually.')
+        elif row['specs']['peak_tflops_bf16'] is None:
+            row['issues'].append('Catalogue has GPU memory only: enter peak TFLOPS and bandwidth for runtime.')
         elif row['specs']['review_status'] != 'verified':
             row['issues'].append('Catalogue specs are pending review (not live-verified).')
         row['search_text'] = ' '.join(str(x) for x in (row['label'], row['platform'], row.get('price') and
                                                        row['price']['region'], row['specs'] and row['specs']['name'])
                                       if x).lower()
     return rows
+
+
+def runtime_ready(row):
+    """True when the row has everything the runtime estimate needs (VRAM, BF16, FP32, bandwidth)."""
+    spec = row.get('specs') or {}
+    return bool(row.get('vram_gib') and spec.get('peak_tflops_bf16') and spec.get('peak_tflops_fp32')
+                and spec.get('memory_bandwidth_gb_s'))
+
+
+def choices():
+    """GPU dropdown: Nebius AI Cloud entries (catalogue specs merged in) and the catalogue GPUs that Nebius
+    does not offer. Only GPUs with every runtime parameter are listed; each GPU appears once per source."""
+    rows = [r for r in options() if runtime_ready(r)]
+    on_nebius = {r['specs']['catalog_gpu_id'] for r in rows if r['provider'] == 'nebius'}
+    nebius = sorted((r for r in rows if r['provider'] == 'nebius'),
+                    key=lambda r: (r['label'], r['price'] is None, (r['price'] or {}).get('region') or ''))
+    catalog = sorted((r for r in rows if r['provider'] == 'catalog' and r['specs']['catalog_gpu_id'] not in on_nebius),
+                     key=lambda r: r['label'])
+    return {'nebius': nebius, 'catalog': catalog}
 
 
 def search(query='', limit=MAX_RESULTS, offset=0):

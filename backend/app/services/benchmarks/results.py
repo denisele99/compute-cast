@@ -21,6 +21,10 @@ class ResultError(ValueError):
     pass
 
 
+class ResultDecodeError(ResultError):
+    """The bytes are not (yet) a JSON document: empty, truncated or not UTF-8. Cloud collection retries these briefly."""
+
+
 def _reject_constant(name):
     raise ResultError(f'Non-finite number {name} is not allowed.')
 
@@ -55,10 +59,15 @@ def parse(raw):
         raw = raw.encode('utf-8')
     if len(raw) > MAX_RESULT_BYTES:
         raise ResultError(f'results.json exceeds {MAX_RESULT_BYTES // 1024} KiB.')
+    raw = raw.removeprefix(b'\xef\xbb\xbf')  # editors on Windows add a UTF-8 BOM
+    if not raw.strip():
+        raise ResultDecodeError('results.json is empty.')
     try:
         data = json.loads(raw.decode('utf-8'), parse_constant=_reject_constant)
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ResultError('results.json is not valid UTF-8 JSON.') from exc
+    except UnicodeDecodeError as exc:
+        raise ResultDecodeError(f'results.json is not valid UTF-8 ({len(raw)} bytes, starts {raw[:16]!r}).') from exc
+    except json.JSONDecodeError as exc:
+        raise ResultDecodeError(f'results.json is not valid JSON ({len(raw)} bytes): {exc.msg} at line {exc.lineno}.') from exc
     if not isinstance(data, dict):
         raise ResultError('results.json must be a JSON object.')
     if data.get('schema_version') != R.RESULTS_SCHEMA_VERSION:

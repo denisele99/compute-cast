@@ -5,6 +5,7 @@ constructs a CreateJobRequest message. Optional: BENCH_PYTHON=<python with torch
 on CPU (smoke) and, with BENCH_CUDA=1 on a GPU machine, on CUDA.
 """
 import copy
+import gzip
 import io
 import json
 import os
@@ -20,9 +21,10 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.services.analysis_store import AnalysisStore
+from app.services.benchmarks import jobs as JOBS
 from app.services.benchmarks import results as RS
 from app.services.benchmarks.jobs import JobService
-from app.services.benchmarks.nebius_client import FakeJobsClient, FakeResultStore, JobRequest, build_create_request
+from app.services.benchmarks.nebius_client import FakeJobsClient, FakeResultStore, JobRequest, build_create_request, unwrap_object
 from app.services.benchmarks.policy import load_policy
 from app.services.benchmarks.registry import package_dir, registry
 from app.services.benchmarks.store import Store
@@ -426,6 +428,21 @@ class JobTests(BenchApiBase):
         self.assertIn('BENCH_IMAGE', r.json()['detail']['missing'])
         self.assertEqual(self.client_fake.requests, [])
 
+    def test_default_image_and_digest_warning(self):
+        from app.services.benchmarks.policy import DEFAULT_IMAGE
+        with mock.patch.dict(os.environ, {'BENCH_IMAGE': ''}):
+            self.assertEqual(load_policy().image, 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9')
+        self.svc.policy = replace(self.policy, image=DEFAULT_IMAGE)
+        status = self.c.get('/api/bench/status').json()
+        self.assertEqual((status['image'], status['image_warnings']), (DEFAULT_IMAGE, []))
+        self.svc.policy = replace(self.policy, image='cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark:v1')
+        self.assertTrue(any('sha256' in w for w in self.c.get('/api/bench/status').json()['image_warnings']))
+        pinned = 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:' + 'c' * 64
+        self.svc.policy = replace(self.policy, image=pinned)
+        self.assertEqual(self.c.get('/api/bench/status').json()['image_warnings'], [])
+        self.submit()
+        self.assertEqual(self.client_fake.requests[0].image, pinned)
+
     def test_unready_config_is_not_submitted(self):
         values = {**self.values, 'hardware.gpu_id': 'catalog:a100-80gb'}
         r = self.submit(values=values)
@@ -465,6 +482,45 @@ class JobTests(BenchApiBase):
         self.assertIsNone(self.svc.store.get_job(job['id'])['active_slot'])
         self.assertEqual(self.submit('key-00000002').status_code, 202)  # slot released
 
+    def test_unreadable_results_are_retried_then_fail(self):
+        self.client_fake.script = ['RUNNING', 'COMPLETED']
+        job = self.submit().json()
+        req = self.client_fake.requests[0]
+        self.poll(job['id'])
+        self.results_fake.put(req.results_source_path, b'')  # mount still uploading
+        waiting = self.poll(job['id'])
+        self.assertEqual(waiting['state'], 'collecting', waiting)
+        self.assertIn('Waiting for results.json', waiting['provider_message'])
+        self.results_fake.put(req.results_source_path, b'{"schema_version": ')  # truncated
+        self.clock.t += JOBS.RESULTS_SETTLE_SECONDS / 2
+        self.assertEqual(self.poll(job['id'])['state'], 'collecting')
+        self.results_fake.put(req.results_source_path, fake_results(json.loads(req.config_bytes)))
+        self.clock.t += self.policy.poll_min_interval_seconds + 1
+        self.assertEqual(self.poll(job['id'])['state'], 'succeeded')
+
+        job = self.submit(key='key-00000002').json()
+        req = self.client_fake.requests[1]
+        self.poll(job['id'])
+        self.results_fake.put(req.results_source_path, b'\xff\xfe not json')
+        self.results_fake.logs[req.results_source_path] = b'... INFO building model\n... ERROR runtime_error: boom\n'
+        self.assertEqual(self.poll(job['id'])['state'], 'collecting')
+        self.clock.t += JOBS.RESULTS_SETTLE_SECONDS + 1
+        done = self.poll(job['id'])
+        self.assertEqual((done['state'], done['error']['type']), ('failed', 'invalid_results'))
+        self.assertIn('UTF-8', done['error']['message'])
+        self.assertIn(f'{req.results_source_path}/', done['error']['message'])
+        self.assertIn('runtime_error: boom', done['error']['message'])
+
+    def test_bucket_framing_is_unwrapped(self):
+        body = json.dumps({'a': 1}).encode()
+        chunked = b'%x;chunk-signature=%s\r\n%s\r\n0;chunk-signature=%s\r\n\r\n' % (len(body), b'0' * 64, body, b'0' * 64)
+        unsigned = b'%x\r\n%s\r\n0\r\nx-amz-checksum-crc32:AAAAAA==\r\n\r\n' % (len(body), body)
+        for raw in (body, chunked, unsigned, gzip.compress(body)):
+            self.assertEqual(unwrap_object(raw), body, raw[:20])
+        self.assertEqual(unwrap_object(b'12'), b'12')  # a bare JSON number is not mistaken for a chunk header
+        with self.assertRaises(RS.ResultDecodeError):
+            RS.parse(b'  \n')
+
     def test_provider_state_codes_without_results(self):
         for code, state, kind in (('TimeoutExceeded', 'timed_out', 'timeout'), ('NotEnoughResources', 'failed', 'not_enough_resources'),
                                   ('ContainerFailed', 'failed', 'results_missing')):
@@ -473,6 +529,16 @@ class JobTests(BenchApiBase):
             done = self.poll(job['id'])
             self.assertEqual((done['state'], done['error']['type']), (state, kind))
             self.assertIn(code, done['provider_message'] or '')
+
+    def test_template_placeholders_count_as_unset(self):
+        env = {'NEBIUS_SERVICE_ACCOUNT_ID': 'serviceaccount-<id>', 'NEBIUS_PUBLIC_KEY_ID': 'publickey-<id>',
+               'NEBIUS_PRIVATE_KEY_FILE': '/etc/secrets/nebius-private.pem', 'NEBIUS_CREDENTIALS_FILE': '/home/me/credentials.json',
+               'NEBIUS_PROJECT_ID': 'project-<id>', 'BENCH_NEBIUS_BACKEND': ''}
+        with mock.patch.dict(os.environ, env):
+            p = load_policy()
+        self.assertIsNone(p.service_account_id)
+        self.assertIsNone(p.project_id)
+        self.assertEqual((p.credentials_file, p.backend), ('/home/me/credentials.json', 'sdk'))
 
     def test_sdk_backend_needs_service_account_credentials(self):
         self.svc.policy = replace(self.policy, backend='sdk', credentials_file=None)

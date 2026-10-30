@@ -25,7 +25,9 @@ timing, and what started_at/finished_at cover relative to billing.
 """
 from __future__ import annotations
 
+import gzip
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
@@ -40,6 +42,7 @@ STATE_MAP = {
     'ERROR': 'collecting', 'CANCELLING': 'cancelling', 'CANCELLED': 'cancelled', 'DELETING': 'collecting',
 }
 PROVIDER_TERMINAL = {'COMPLETED', 'FAILED', 'ERROR', 'CANCELLED'}
+CALL_LIMIT = {'timeout': 60, 'auth_timeout': 60}  # per SDK call, so a network problem fails instead of hanging
 
 
 @dataclass
@@ -133,22 +136,22 @@ class NebiusSDKClient:
         from nebius.sdk import SDK
         if self._sdk is None:
             p = self.policy
-            if p.service_account_id and p.public_key_id and p.private_key_file:
-                self._sdk = SDK(service_account_id=p.service_account_id, service_account_public_key_id=p.public_key_id,
-                                service_account_private_key_file_name=p.private_key_file, parent_id=p.project_id,
+            if p.credentials_file:  # one-file credentials take priority when set
+                self._sdk = SDK(credentials_file_name=p.credentials_file, parent_id=p.project_id,
                                 user_agent_prefix='compute-cast-benchmark/0.1')
             else:
-                self._sdk = SDK(credentials_file_name=p.credentials_file, parent_id=p.project_id,
+                self._sdk = SDK(service_account_id=p.service_account_id, service_account_public_key_id=p.public_key_id,
+                                service_account_private_key_file_name=p.private_key_file, parent_id=p.project_id,
                                 user_agent_prefix='compute-cast-benchmark/0.1')
         return JobServiceClient(self._sdk)
 
     def submit(self, request):
-        operation = self._service().create(build_create_request(self.policy.project_id, request)).wait()
+        operation = self._service().create(build_create_request(self.policy.project_id, request), **CALL_LIMIT).wait()
         return operation.resource_id
 
     def get(self, provider_job_id):
         from nebius.api.nebius.ai.v1 import GetJobRequest
-        job = self._service().get(GetJobRequest(id=provider_job_id)).wait()
+        job = self._service().get(GetJobRequest(id=provider_job_id), **CALL_LIMIT).wait()
         details = job.status.state_details
         return ProviderStatus(provider_job_id, job.status.state.name, (details.message or '').strip(),
                               _ts(job.status.started_at), _ts(job.status.finished_at), code=details.code or '')
@@ -157,7 +160,7 @@ class NebiusSDKClient:
         from nebius.aio.service_error import RequestError
         from nebius.api.nebius.ai.v1 import GetJobByNameRequest
         try:
-            return self._service().get_by_name(GetJobByNameRequest(parent_id=self.policy.project_id, name=name)).wait().metadata.id
+            return self._service().get_by_name(GetJobByNameRequest(parent_id=self.policy.project_id, name=name), **CALL_LIMIT).wait().metadata.id
         except RequestError as exc:
             if 'NOT_FOUND' in str(exc.status):
                 return None
@@ -165,7 +168,35 @@ class NebiusSDKClient:
 
     def cancel(self, provider_job_id):
         from nebius.api.nebius.ai.v1 import CancelJobRequest
-        self._service().cancel(CancelJobRequest(id=provider_job_id)).wait()
+        self._service().cancel(CancelJobRequest(id=provider_job_id), **CALL_LIMIT).wait()
+
+
+_CHUNK_HEADER = re.compile(rb'^([0-9a-fA-F]+)(;[^\r\n]*)?\r\n')
+
+
+def unwrap_object(data: bytes, content_encoding: str = '') -> bytes:
+    """Undo transport framing an S3-compatible store may leave in the object body.
+
+    Recent boto3/AWS SDKs upload with ``aws-chunked`` encoding (``<hex>;chunk-signature=...\\r\\n<data>\\r\\n``) and
+    some non-AWS stores keep that framing in the stored object; objects may also be stored gzip-compressed.
+    Plain JSON is returned unchanged.
+    """
+    if data[:2] == b'\x1f\x8b' or 'gzip' in content_encoding:
+        try:
+            data = gzip.decompress(data)[:256 * 1024 + 1]
+        except (OSError, EOFError):
+            return data
+    if not _CHUNK_HEADER.match(data):
+        return data
+    out, rest = bytearray(), data
+    while (m := _CHUNK_HEADER.match(rest)):
+        size = int(m.group(1), 16)
+        if size == 0:
+            return bytes(out)
+        start = m.end()
+        out += rest[start:start + size]
+        rest = rest[start + size:].removeprefix(b'\r\n')
+    return bytes(out) if not rest.strip() else data
 
 
 class S3ResultStore:
@@ -175,13 +206,26 @@ class S3ResultStore:
         self.policy = policy
 
     def fetch_results(self, source_path):
+        data = self._get(f'{source_path}/results.json', 256 * 1024 + 1)
+        return None if data is None else unwrap_object(*data)
+
+    def fetch_log_tail(self, source_path, limit=600):
+        """Last bytes of benchmark.log (diagnostics only; shown as text, never parsed or executed)."""
+        data = self._get(f'{source_path}/benchmark.log', 64 * 1024)
+        return None if data is None else unwrap_object(*data)[-limit:]
+
+    def _get(self, key, limit):
         import boto3
+        from botocore.config import Config
         from botocore.exceptions import ClientError
-        s3 = boto3.client('s3', endpoint_url=self.policy.s3_endpoint, region_name=self.policy.s3_region,
+        # Non-AWS S3 endpoints: only send/validate checksums when the API requires them.
+        config = Config(request_checksum_calculation='when_required', response_checksum_validation='when_required',
+                        retries={'max_attempts': 3, 'mode': 'standard'})
+        s3 = boto3.client('s3', endpoint_url=self.policy.s3_endpoint, region_name=self.policy.s3_region, config=config,
                           aws_access_key_id=self.policy.s3_access_key_id, aws_secret_access_key=self.policy.s3_secret_access_key)
         try:
-            body = s3.get_object(Bucket=self.policy.results_bucket_name, Key=f'{source_path}/results.json')['Body']
-            return body.read(256 * 1024 + 1)
+            obj = s3.get_object(Bucket=self.policy.results_bucket_name, Key=key)
+            return obj['Body'].read(limit), obj.get('ContentEncoding') or ''
         except ClientError as exc:
             if exc.response.get('Error', {}).get('Code') in ('NoSuchKey', '404'):
                 return None
@@ -229,10 +273,14 @@ class FakeJobsClient:
 
 class FakeResultStore:
     def __init__(self):
-        self.objects = {}
+        self.objects, self.logs = {}, {}
 
     def put(self, source_path, data):
         self.objects[source_path] = data if isinstance(data, bytes) else json.dumps(data).encode()
 
     def fetch_results(self, source_path):
         return self.objects.get(source_path)
+
+    def fetch_log_tail(self, source_path, limit=600):
+        log = self.logs.get(source_path)
+        return None if log is None else log[-limit:]

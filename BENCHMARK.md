@@ -275,7 +275,10 @@ BENCH_CLOUD_ENABLED=1 BENCH_NEBIUS_BACKEND=fake BENCH_DEMO_PASSWORD=dev-pass BEN
    - Set `CORS_ALLOWED_ORIGINS=https://<user>.github.io`. This is the origin only, with no path.
    - Keep `BENCH_CLOUD_ENABLED=0` until the live checks below pass.
 
-4. Point `BENCH_IMAGE` at the published image **by digest**; see
+4. The job image defaults to `cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9`
+   (pushed as `benchmark:v1` in Nebius Container Registry, eu-north1). Same-project registry images need no pull credentials, so leave
+   `NEBIUS_REGISTRY_SECRET_VERSION` empty. Run jobs in a project in the same region, and pin the image
+   **by digest** with `BENCH_IMAGE` (the Nebius tab warns while it is a tag); see
    [benchmark/README.md](benchmark/README.md).
 
 5. Login rate-limiting uses the last `X-Forwarded-For` entry, which is the one Render's proxy
@@ -304,6 +307,19 @@ third-party cookies are involved. CORS allows only the configured origins and th
 
 The display name is only a label. Allowances and job ownership are keyed by the random session ID,
 and other sessions get 404 for jobs they don't own.
+
+### Checking the Nebius sign-in
+
+After filling in the Nebius settings, run this read-only check from `backend/`. It creates nothing and costs
+nothing:
+
+```bash
+python scripts/check_nebius.py
+```
+
+It signs in exactly as the backend does and shows which service account it is. It lists jobs in
+`NEBIUS_PROJECT_ID`, and tries to download a non-existent object from the results bucket with the reader key.
+Each step prints `OK` or `FAIL` with the reason. Secrets are never printed.
 
 ### Turning cloud benchmarks off
 
