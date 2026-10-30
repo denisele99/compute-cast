@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Compact peak-memory estimate from collect_workload metadata; stdlib, Python 3.10+.
+"""LEGACY - NOT USED BY THE GPT-2 MVP. Retained for future profiles/extensions; not imported by
+active routes. Active MVP path: app/parsers/gpt2_inputs.py, app/parsers/gpt2_extract.py,
+app/services/estimators/estimate_gpt2.py and gpt2_predict.py. Still covered by tests.
+
+Peak-memory estimator for the MLP / classic-transformer profiles (DDP/ZeRO/FSDP, offload).
+
+Compact peak-memory estimate from collect_workload metadata; stdlib, Python 3.10+.
 
   python estimate_gpu_memory.py workload.json --hardware hardware_config.json \
       --output memory_estimate.json

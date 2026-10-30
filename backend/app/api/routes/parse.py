@@ -1,40 +1,32 @@
-"""Schema and Hugging Face metadata lookup (config.json only, no weights, no remote code)."""
-from fastapi import APIRouter, HTTPException, Query
-from starlette.concurrency import run_in_threadpool
+"""MVP input schema and the restricted Hugging Face model list."""
+from fastapi import APIRouter, Query
 
-from ...clients import huggingface as hf
-from ...parsers import normalize_inputs as N
+from ...parsers import gpt2_inputs as G
 from ...parsers.dataset_sample import SUPPORTED_FORMATS
-from ...parsers.static_extract import map_model_config
-from ...services.upload_cache import ALLOWED, MAX_FILE_BYTES
+from ...parsers.gpt2_extract import ALLOWED_HF_MODELS, EXAMPLE_SETS, snapshot
+from ...services.upload_cache import ALLOWED, SUFFIX_BYTES, MAX_FILE_BYTES
 
 router = APIRouter(tags=["Parsing"])
 
 
 @router.get("/schema")
 def schema():
-    return {**N.schema(), 'uploads': {'allowed_extensions': {k: sorted(v) for k, v in ALLOWED.items()},
-                                      'max_bytes': MAX_FILE_BYTES,
-                                      'dataset_formats': SUPPORTED_FORMATS}}
+    return {**G.schema(), 'uploads': {'allowed_extensions': sorted(ALLOWED['auto']),
+                                      'max_bytes_default': MAX_FILE_BYTES['auto'], 'max_bytes_by_type': SUFFIX_BYTES,
+                                      'dataset_formats': SUPPORTED_FORMATS},
+            'huggingface_models': list(ALLOWED_HF_MODELS),
+            'examples': [{'id': k, 'label': v['label'], 'files': v['files']} for k, v in EXAMPLE_SETS.items()]}
 
 
 @router.get("/hf/search")
-async def hf_search(q: str = Query(min_length=1, max_length=100)):
-    try:
-        return {'items': await run_in_threadpool(hf.search_models, q)}
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    except hf.HubError as exc:
-        raise HTTPException(502, str(exc)) from exc
-
-
-@router.get("/hf/config")
-async def hf_config(model_id: str = Query(min_length=1, max_length=200), revision: str = 'main'):
-    try:
-        config = await run_in_threadpool(hf.fetch_config, model_id, revision)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    except hf.HubError as exc:
-        raise HTTPException(502, str(exc)) from exc
-    return {'model_id': model_id, 'config': config,
-            'extraction': map_model_config(config, f'{model_id}/config.json', source='huggingface')}
+def hf_search(q: str = Query('', max_length=100)):
+    """Searches only the MVP's supported GPT-2 checkpoints (no open Hub search)."""
+    term = q.strip().lower()
+    items = []
+    for model_id in ALLOWED_HF_MODELS:
+        if term and term not in model_id.lower():
+            continue
+        cfg = snapshot(model_id)
+        items.append({'id': model_id, 'summary': f"GPT-2, {cfg['n_layer']} layers, hidden {cfg['n_embd']}, "
+                                                 f"{cfg['n_head']} heads, context {cfg['n_positions']}"})
+    return {'items': items, 'note': 'MVP: only standard GPT-2 checkpoints are selectable.'}

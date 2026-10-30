@@ -1,4 +1,10 @@
-"""Supported prediction profiles: validation, parameter layout and activation formulas.
+"""LEGACY - NOT USED BY THE GPT-2 MVP. Retained for future profiles/extensions; not imported by
+active routes. Active MVP path: app/parsers/gpt2_inputs.py, app/parsers/gpt2_extract.py,
+app/services/estimators/estimate_gpt2.py and gpt2_predict.py. Still covered by tests.
+
+MLP and classic-transformer profile formulas. (UNSUPPORTED_MODEL_TYPES is also read by static_extract.)
+
+Supported prediction profiles: validation, parameter layout and activation formulas.
 
 PyTorch only. Two explicit profiles are supported:
 

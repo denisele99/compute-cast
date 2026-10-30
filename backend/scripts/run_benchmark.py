@@ -62,7 +62,10 @@ def reference_model(torch, profile, m):
                              nn.Linear(m['hidden_size'], m['output_size'], bias=m['linear_bias']))
     H, A, L, V = m['hidden_size'], m['num_attention_heads'], m['num_hidden_layers'], m['vocab_size']
     bias, ln_bias = m['linear_bias'], m['layer_norm_bias']
-    act = nn.GELU() if m.get('mlp_activation', 'gelu') == 'gelu' else nn.ReLU()
+    I = m.get('intermediate_size') or 4 * H
+    p_attn, p_embd, p_resid = (m.get(k, 0.1) for k in ('attention_dropout', 'embedding_dropout', 'residual_dropout'))
+    act_name = m.get('mlp_activation', 'gelu')
+    act = nn.GELU(approximate='tanh') if act_name == 'gelu_new' else nn.GELU() if act_name == 'gelu' else nn.ReLU()
 
     class Block(nn.Module):
         def __init__(self):
@@ -71,9 +74,10 @@ def reference_model(torch, profile, m):
             self.c_attn = nn.Linear(H, 3 * H, bias=bias)
             self.c_proj = nn.Linear(H, H, bias=bias)
             self.ln_2 = nn.LayerNorm(H, bias=ln_bias)
-            self.c_fc = nn.Linear(H, 4 * H, bias=bias)
-            self.mlp_proj = nn.Linear(4 * H, H, bias=bias)
-            self.drop = nn.Dropout(0.1)
+            self.c_fc = nn.Linear(H, I, bias=bias)
+            self.mlp_proj = nn.Linear(I, H, bias=bias)
+            self.attn_drop = nn.Dropout(p_attn)
+            self.drop = nn.Dropout(p_resid)
 
         def forward(self, x, causal):
             B, S, _ = x.shape
@@ -83,7 +87,7 @@ def reference_model(torch, profile, m):
             if causal:
                 mask = torch.ones(S, S, dtype=torch.bool, device=x.device).triu(1)
                 scores = scores.masked_fill(mask, float('-inf'))
-            y = self.drop(torch.softmax(scores, dim=-1)) @ v
+            y = self.attn_drop(torch.softmax(scores, dim=-1)) @ v
             x = x + self.drop(self.c_proj(y.transpose(1, 2).reshape(B, S, H)))
             return x + self.drop(self.mlp_proj(act(self.c_fc(self.ln_2(x)))))
 
@@ -93,6 +97,7 @@ def reference_model(torch, profile, m):
             self.wte = nn.Embedding(V, H)
             self.wpe = nn.Embedding(m['max_position_embeddings'], H) if m['position_embedding'] == 'learned' else None
             self.h = nn.ModuleList(Block() for _ in range(L))
+            self.embd_drop = nn.Dropout(p_embd)
             self.ln_f = nn.LayerNorm(H, bias=ln_bias)
             self.lm_head = nn.Linear(H, V, bias=m['lm_head_bias'])
             if m['tie_word_embeddings']:
@@ -103,6 +108,7 @@ def reference_model(torch, profile, m):
             x = self.wte(ids)
             if self.wpe is not None:
                 x = x + self.wpe(torch.arange(ids.shape[1], device=ids.device))
+            x = self.embd_drop(x)
             for block in self.h:
                 x = block(x, self.causal)
             return self.lm_head(self.ln_f(x))

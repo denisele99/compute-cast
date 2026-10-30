@@ -1,4 +1,10 @@
-"""Canonical analysis input schema, validation and normalization.
+"""LEGACY - NOT USED BY THE GPT-2 MVP. Retained for future profiles/extensions; not imported by
+active routes. Active MVP path: app/parsers/gpt2_inputs.py, app/parsers/gpt2_extract.py,
+app/services/estimators/estimate_gpt2.py and gpt2_predict.py. Still covered by tests.
+
+Field schema/validation for the legacy MLP / classic-transformer form.
+
+Canonical analysis input schema, validation and normalization.
 
 Uploaded files, Hugging Face metadata, catalogue lookups and manual entry all populate the
 SAME flat field map (``values``: dotted key -> value). Each value carries provenance in a

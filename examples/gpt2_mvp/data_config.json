@@ -1,0 +1,7 @@
+{
+  "description": "Example preprocessing/collator settings: fixed padding to 512 tokens.",
+  "max_length": 512,
+  "padding": "max_length",
+  "truncation": true,
+  "num_training_examples": 100000
+}

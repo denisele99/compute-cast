@@ -82,22 +82,27 @@ export function needsReview(form: FormState, visible: string[]): string[] {
   return visible.filter((k) => { const f = form[k]; return f && f.source !== 'manual' && !f.reviewed && (f.value !== null || f.status === 'unresolved'); });
 }
 
-/** Conditional visibility rules for the current values. */
-export function visible(key: string, v: Values, profiles: string[] | null): boolean {
-  const profile = v['model.profile'] as string | null | undefined;
-  if (profiles && (!profile || !profiles.includes(profile))) return false;
-  const opt = v['training.optimizer']; const mode = v['training.schedule_mode'] ?? 'epochs';
+/** Conditional visibility rules (GPT-2 MVP). */
+export function visible(key: string, v: Values): boolean {
+  const mode = v['training.duration_mode'] ?? 'epochs';
   switch (key) {
-    case 'training.epochs': return mode === 'epochs';
-    case 'training.max_steps': return mode === 'max_steps';
-    case 'training.momentum': return opt === 'SGD' || opt === 'RMSprop';
-    case 'training.amsgrad': return opt === 'Adam' || opt === 'AdamW';
-    case 'training.centered': return opt === 'RMSprop';
-    case 'training.optimizer_state_dtype': return !(opt === 'SGD' && !v['training.momentum']);
-    case 'hardware.gpus_per_instance': return v['hardware.price_unit'] === 'instance_hour';
-    case 'training.largest_gather_unit_params': return ['zero3', 'fsdp_full_shard', 'fsdp_shard_grad_op'].includes(String(v['training.distributed_strategy']));
-    case 'training.sampler_drop_last': return Number(v['training.gpu_count_used'] ?? 1) > 1;
-    case 'hardware.source': case 'hardware.selection_id': return false;
+    case 'training.num_epochs': case 'data.num_training_examples': return mode === 'epochs';
+    case 'training.optimizer_updates': return mode === 'optimizer_updates';
+    case 'hardware.source': case 'hardware.gpu_id': case 'hardware.catalog_gpu_id': case 'model.model_type': return false;
     default: return true;
   }
+}
+
+const EXTRACTED: Source[] = ['upload', 'static_extraction', 'huggingface'];
+const CATALOGUE_LOCKED = ['hardware.vram_gib', 'hardware.bf16_supported', 'hardware.bf16_dense_tflops', 'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps'];
+
+/** Why a field is read-only, or null when editable (contract editable=false / custom_only; catalogue specs). */
+export function lockReason(key: string, editable: boolean | 'custom_only', form: FormState, v: Values): string | null {
+  const f = form[key];
+  if (editable === 'custom_only' && f && EXTRACTED.includes(f.source) && !v['model.custom_config'])
+    return 'From the selected checkpoint. Turn on "Hypothetical custom configuration" to change it.';
+  if (editable === false) return 'Fixed in v1.';
+  if (CATALOGUE_LOCKED.includes(key) && f?.source === 'catalogue' && v['hardware.source'] !== 'custom')
+    return 'From the hardware catalogue. Choose "Custom GPU" to enter your own values.';
+  return null;
 }

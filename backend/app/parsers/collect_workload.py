@@ -1,4 +1,10 @@
-"""Metadata-only PyTorch workload collector: explicit settings -> workload.json.
+"""LEGACY - NOT USED BY THE GPT-2 MVP. Retained for future profiles/extensions; not imported by
+active routes. Active MVP path: app/parsers/gpt2_inputs.py, app/parsers/gpt2_extract.py,
+app/services/estimators/estimate_gpt2.py and gpt2_predict.py. Still covered by tests.
+
+Metadata-only workload.json collector for the legacy profiles (CLI still works).
+
+Metadata-only PyTorch workload collector: explicit settings -> workload.json.
 
 Python 3.10+, stdlib (+ optional PyYAML). No GPU, no PyTorch, no model code required.
 

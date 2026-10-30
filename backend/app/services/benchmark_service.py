@@ -6,13 +6,13 @@ integration exists, so the remote path reports itself unavailable (nothing is la
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import math
 from pathlib import Path
 
 from ..clients.nebius import launch_gpu_job
-from ..parsers import normalize_inputs as N
 
 TEMPLATE = Path(__file__).resolve().parents[2] / 'scripts' / 'run_benchmark.py'
 MAX_RESULT_BYTES = 200_000
@@ -28,56 +28,96 @@ def _shell_quote(name):
     return name if all(c.isalnum() or c in '._-/' for c in name) else "'" + name.replace("'", "'\\''") + "'"
 
 
+BENCHMARK_WARMUP_STEPS = 10
+BENCHMARK_MEASURED_STEPS = 50
+
+
+def _defines_build_model(meta):
+    if not meta['name'].endswith('.py') or not meta.get('path'):
+        return False
+    try:
+        tree = ast.parse(Path(meta['path']).read_text(encoding='utf-8'))
+    except (OSError, SyntaxError, UnicodeDecodeError):
+        return False
+    return any(isinstance(n, ast.FunctionDef) and n.name == 'build_model' for n in tree.body)
+
+
 def plan(analysis_id, values, files):
-    """Script config, requirements and the CLI command matching the generated script."""
-    model_files = [f for f in files if f['kind'] == 'model' and f['name'].endswith('.py')]
-    train_cfg = [f for f in files if f['kind'] == 'training' and f['name'].endswith(('.json', '.yaml', '.yml'))]
-    data = [f for f in files if f['kind'] == 'dataset']
+    """Requirements and the CLI command matching the generated script (GPT-2 MVP)."""
+    model_files = [f for f in files if _defines_build_model(f)]
+    samples = [f for f in files if (f.get('extraction') or {}).get('kind') == 'dataset_sample'
+               and (f['extraction'].get('stats') or {}).get('token_lengths')]
     command = ['python', 'run_benchmark.py']
     if model_files:
         command += ['--model', _shell_quote(model_files[0]['name'])]
-    if train_cfg:
-        command += ['--train', _shell_quote(train_cfg[0]['name'])]
-    if data:
-        command += ['--data-sample', _shell_quote(data[0]['name'])]
+    if samples:
+        command += ['--data-sample', _shell_quote(samples[0]['name'])]
     command += ['--output', 'benchmark_result.json']
-    template = ['python', 'run_benchmark.py', '--model', 'MODEL_PATH', '--train', 'TRAINING_PATH',
-                '--data-sample', 'DATA_PATH', '--output', 'OUTPUT_PATH']
+    template = ['python', 'run_benchmark.py', '[--model MODEL_PATH]', '[--train TRAINING_PATH]',
+                '[--data-sample DATA_PATH]', '--output', 'OUTPUT_PATH']
     requirements = {
-        'environment': ['Python 3.10+', 'PyTorch 2.1+ built with CUDA and an NVIDIA GPU',
-                        'PyYAML (only for YAML --train configs)', 'Same Python dependencies your '
-                        'model file imports (only when --model is used)'],
+        'environment': ['Python 3.10+', 'PyTorch 2.1+ built with CUDA and a BF16-capable NVIDIA GPU',
+                        'PyYAML (only for YAML --train overrides)'],
         'files': [
             {'flag': '--model', 'required': False, 'provided': [f['name'] for f in model_files],
-             'description': 'Python file exposing build_model(config) -> nn.Module. Executes your code; '
-                            'omit to benchmark the reference profile implementation.'},
-            {'flag': '--train', 'required': False, 'provided': [f['name'] for f in train_cfg],
-             'description': 'JSON/YAML overrides for the embedded training settings (training scripts are not run).'},
-            {'flag': '--data-sample', 'required': False, 'provided': [f['name'] for f in data],
-             'description': 'CSV/TSV/JSONL sample for batches; random tensors of the configured shapes otherwise.'},
+             'description': 'Optional Python file exposing build_model(config) -> nn.Module (executes your code). '
+                            'Omitted: the built-in GPT-2 reference implementation of your settings is used.'},
+            {'flag': '--train', 'required': False, 'provided': [],
+             'description': 'Optional JSON/YAML overrides of the embedded settings; not needed, settings are embedded.'},
+            {'flag': '--data-sample', 'required': False, 'provided': [f['name'] for f in samples],
+             'description': 'Optional JSONL with integer input_ids; random token ids of the configured shape otherwise.'},
         ],
         'credentials': ['None for local runs.'],
-        'warnings': ['Local benchmarking executes code on your machine (PyTorch, and your model '
-                     'file when --model is passed). Review files before running.',
-                     'Runs on one GPU; DDP/ZeRO/FSDP communication and sharding are not reproduced.'],
+        'warnings': ['Local benchmarking executes code on your machine (PyTorch, and your model file when --model '
+                     'is passed). Review files before running.',
+                     f'Runs {BENCHMARK_WARMUP_STEPS} warm-up + {BENCHMARK_MEASURED_STEPS} measured optimizer steps on one GPU.'],
     }
     return {'command': ' '.join(command), 'command_template': ' '.join(template),
             'requirements': requirements, 'fingerprint': fingerprint(values)}
 
 
+def benchmark_config(analysis_id, v):
+    """Map the GPT-2 MVP settings onto run_benchmark.py's reference transformer."""
+    H = v['model.hidden_size']
+    model = {'vocab_size': v['model.vocab_size'], 'hidden_size': H, 'num_hidden_layers': v['model.num_layers'],
+             'num_attention_heads': v['model.num_attention_heads'], 'position_embedding': 'learned',
+             'max_position_embeddings': v['model.max_position_embeddings'], 'tie_word_embeddings': True,
+             'linear_bias': True, 'layer_norm_bias': True, 'lm_head_bias': False, 'mlp_activation': 'gelu_new',
+             'intermediate_size': v.get('model.intermediate_size') or 4 * H,
+             'attention_dropout': v['model.attention_dropout'], 'embedding_dropout': v['model.embedding_dropout'],
+             'residual_dropout': v['model.residual_dropout']}
+    training = {'task': 'causal_language_modeling', 'batch_size_per_gpu': v['training.microbatch_size'],
+                'gradient_accumulation_steps': v['training.gradient_accumulation_steps'], 'precision': 'bf16',
+                'parameter_dtype': 'fp32', 'optimizer': 'AdamW', 'optimizer_options': {'foreach': False},
+                'input_dtype': 'int64', 'target_dtype': 'int64', 'sequence_length': v['data.sequence_length'],
+                'gpu_count': 1, 'distributed_strategy': 'single'}
+    return {'analysis_id': analysis_id, 'config_fingerprint': fingerprint(v), 'profile': 'transformer_lm_classic',
+            'architecture': 'gpt2', 'model': model, 'training': training,
+            'benchmark': {'steps': BENCHMARK_MEASURED_STEPS, 'warmup_steps': BENCHMARK_WARMUP_STEPS}}
+
+
 def generate_script(analysis_id, values, prediction):
-    model, training = N.model_settings(values), N.training_settings(values)
-    training.pop('input_specs', None)
-    a = N.assumptions(values)['benchmark']
-    config = {'analysis_id': analysis_id, 'config_fingerprint': fingerprint(values),
-              'profile': values['model.profile'], 'model': model, 'training': training,
-              'benchmark': {'steps': a['steps'], 'warmup_steps': a['warmup_steps']},
-              'predicted': {'peak_vram_gib': (prediction or {}).get('memory', {}).get('gpu', {}).get('peak_vram_gib')}}
+    config = benchmark_config(analysis_id, values)
+    config['predicted'] = {'allocated_peak_gib': (prediction or {}).get('memory', {}).get('estimated_allocated_peak')}
     text = TEMPLATE.read_text(encoding='utf-8')
     payload = json.dumps(config, indent=1, sort_keys=True)
     if "'''" in payload:
         raise ValueError('Configuration cannot be embedded safely.')
     return text.replace('__COMPUTE_CAST_CONFIG__', payload)
+
+
+def benchmark_cost(prediction, values):
+    """Analytical cost of the benchmark run itself (warm-up + measured steps, startup excluded)."""
+    from .estimators.pricing import estimate_cost
+    from ..parsers.gpt2_inputs import pricing
+    runtime = (prediction or {}).get('runtime')
+    if not runtime:
+        return {'status': 'unavailable', 'reason': 'Runtime is unavailable, so the benchmark duration cannot be estimated.'}
+    steps = BENCHMARK_WARMUP_STEPS + BENCHMARK_MEASURED_STEPS
+    hours = steps * runtime['seconds_per_full_optimizer_update'] / 3600
+    return {**estimate_cost(hours, pricing(values)), 'steps': BENCHMARK_MEASURED_STEPS,
+            'warmup_steps': BENCHMARK_WARMUP_STEPS, 'seconds_per_optimizer_step': runtime['seconds_per_full_optimizer_update'],
+            'assumption': 'Compute time only; provisioning, image pull and model loading are excluded (v1 scope).'}
 
 
 def _num(value, name, minimum=0):
@@ -116,19 +156,14 @@ def import_result(raw, analysis_id, values, prediction):
         issues.append('Marked not representative (CPU dry run or multi-GPU config on one GPU).')
     comparison = {}
     if prediction and prediction.get('status') == 'ok':
-        predicted_peak = prediction['memory']['gpu'].get('peak_vram_gib')
+        predicted_peak = prediction['memory']['estimated_allocated_peak']
         if predicted_peak and reserved is not None:
             comparison['peak_vram'] = {'predicted_gib': predicted_peak, 'measured_reserved_gib': reserved,
                                        'measured_allocated_gib': peak,
                                        'ratio_measured_to_predicted': reserved / predicted_peak}
-        slow = (prediction['runtime'].get('scenarios') or {}).get('slow', {})
-        fast = (prediction['runtime'].get('scenarios') or {}).get('fast', {})
-        from .estimators.pricing import benchmark_seconds_per_step
-        A = values.get('training.gradient_accumulation_steps') or 1
-        ps, pf = benchmark_seconds_per_step(slow, A), benchmark_seconds_per_step(fast, A)
-        if ps:
-            comparison['seconds_per_optimizer_step'] = {'predicted_fast': pf, 'predicted_slow': ps,
-                                                        'measured_median': median}
+        if prediction.get('runtime'):
+            comparison['seconds_per_optimizer_step'] = {
+                'predicted': prediction['runtime']['seconds_per_full_optimizer_update'], 'measured_median': median}
     return {'kind': 'benchmark', 'provenance': 'local benchmark result imported by user (measured)',
             'device': data.get('device'), 'torch_version': data.get('torch_version'),
             'model_source': data.get('model_source'), 'user_code_executed': data.get('user_code_executed'),

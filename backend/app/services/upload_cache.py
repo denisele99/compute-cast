@@ -26,8 +26,15 @@ ALLOWED = {
     'model': {'.py', '.json', '.yaml', '.yml'},
     'training': {'.py', '.json', '.yaml', '.yml'},
     'dataset': {'.csv', '.tsv', '.jsonl', '.json'},
+    # Single drop zone (MVP): content decides the Model/Training/Data section after upload.
+    'auto': {'.py', '.json', '.yaml', '.yml', '.csv', '.tsv', '.jsonl', '.zip'},
 }
-MAX_FILE_BYTES = {'model': 1_000_000, 'training': 1_000_000, 'dataset': 25_000_000}
+MAX_FILE_BYTES = {'model': 1_000_000, 'training': 1_000_000, 'dataset': 25_000_000, 'auto': 1_000_000}
+SUFFIX_BYTES = {'.csv': 25_000_000, '.tsv': 25_000_000, '.jsonl': 25_000_000, '.zip': 30_000_000}
+
+
+def limit_for(kind, suffix):
+    return SUFFIX_BYTES.get(suffix, MAX_FILE_BYTES[kind]) if kind == 'auto' else MAX_FILE_BYTES[kind]
 MAX_FILES = 20
 MAX_TOTAL_BYTES = 60_000_000
 DEFAULT_TTL_SECONDS = 2 * 60 * 60
@@ -75,7 +82,7 @@ class UploadCache:
         folder = self.directory(analysis_id, create=True)
         file_id = uuid.uuid4().hex
         target = folder / f'{file_id}{suffix}'
-        digest, size, limit = hashlib.sha256(), 0, MAX_FILE_BYTES[kind]
+        digest, size, limit = hashlib.sha256(), 0, limit_for(kind, suffix)
         fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         try:
             with os.fdopen(fd, 'wb') as handle:

@@ -84,14 +84,14 @@ class AnalysisStore:
 
 
 def summarize(result):
+    """Compact GPT-2 MVP result summary kept with each run (and the original snapshot)."""
     if result.get('status') != 'ok':
         return {'status': result.get('status')}
-    slow = (result['runtime'].get('scenarios') or {}).get('slow', {})
-    fast = (result['runtime'].get('scenarios') or {}).get('fast', {})
-    return {'status': 'ok', 'peak_vram_gib': result['memory']['gpu'].get('peak_vram_gib'),
-            'fits': result['memory']['gpu'].get('fits'),
-            'job_hours': {'fast': fast.get('job_hours'), 'slow': slow.get('job_hours')},
-            'cost': {k: v.get('cost') for k, v in result['cost'].items()}}
+    runtime = result.get('runtime') or {}
+    return {'status': 'ok', 'capacity_gib': result['fit']['capacity_gib'],
+            'allocated_peak_gib': result['memory']['estimated_allocated_peak'], 'fits': result['fit']['fits'],
+            'training_hours': (runtime.get('total_training_compute') or {}).get('seconds', 0) / 3600 if runtime else None,
+            'cost': (result.get('cost') or {}).get('cost')}
 
 
 def diff(original_values, current_values, labels):

@@ -52,7 +52,7 @@ def estimate_cost(elapsed_hours, pricing):
     return result
 
 
-def benchmark_seconds_per_step(scenario, accumulation):
+def benchmark_seconds_per_step(scenario, accumulation):  # LEGACY: not used by the GPT-2 MVP
     """Optimizer-step seconds for a benchmark run on synthetic/sample data held in memory.
 
     Uses forward/backward core time, communication and offload per microbatch and the
@@ -67,7 +67,7 @@ def benchmark_seconds_per_step(scenario, accumulation):
     return accumulation * (core + comm_m + off_m) + update + comm_u + off_u
 
 
-def estimate_benchmark_cost(runtime, pricing, benchmark, accumulation):
+def estimate_benchmark_cost(runtime, pricing, benchmark, accumulation):  # LEGACY: not used by the GPT-2 MVP
     scenario = (runtime or {}).get('scenarios', {}).get('slow')
     if not scenario:
         return {'status': 'unavailable', 'reason': 'Runtime prediction is unavailable, so benchmark '

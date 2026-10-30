@@ -1,4 +1,10 @@
-"""Prediction orchestration: validated form values -> normalized bundle -> estimators.
+"""LEGACY - NOT USED BY THE GPT-2 MVP. Retained for future profiles/extensions; not imported by
+active routes. Active MVP path: app/parsers/gpt2_inputs.py, app/parsers/gpt2_extract.py,
+app/services/estimators/estimate_gpt2.py and gpt2_predict.py. Still covered by tests.
+
+Orchestrator for the legacy profiles (gpu_memory + gpu_runtime + pricing).
+
+Prediction orchestration: validated form values -> normalized bundle -> estimators.
 
 Flow: validate -> collect_from_metadata (workload.json) -> hardware_json (hardware.json)
 -> adapters for estimate_gpu_memory / estimate_runtime -> pricing. Entirely

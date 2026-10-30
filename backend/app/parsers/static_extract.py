@@ -1,4 +1,8 @@
-"""Static extraction from uploaded model/training files. Nothing is imported or executed.
+"""PARTLY LEGACY. Active in the GPT-2 MVP: Resolver, _call_name, _kw, _parse, load_config and
+merge_findings (used by gpt2_extract.py). Legacy, NOT USED BY THE MVP: scan_training_script,
+extract_model_script, extract_training_script, map_model_config, map_training_config, extract_file.
+
+Static extraction from uploaded model/training files. Nothing is imported or executed.
 
 Python files are parsed with ``ast`` only; JSON uses ``json`` and YAML uses
 ``yaml.safe_load``. Hugging Face configs are read as plain JSON; ``auto_map`` /

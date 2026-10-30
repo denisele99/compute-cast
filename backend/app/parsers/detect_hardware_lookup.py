@@ -156,7 +156,7 @@ def get_option(option_id):
     return next((r for r in options() if r['id'] == option_id), None)
 
 
-def form_values(option, preset_gpu_count=None):
+def form_values(option, preset_gpu_count=None):  # LEGACY form keys; MVP uses gpt2_predict.hardware_values
     """Field values (and provenance) to autofill the hardware form from one option."""
     values, notes = {}, []
     specs = option.get('specs') or {}
