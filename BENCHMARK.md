@@ -308,6 +308,19 @@ third-party cookies are involved. CORS allows only the configured origins and th
 The display name is only a label. Allowances and job ownership are keyed by the random session ID,
 and other sessions get 404 for jobs they don't own.
 
+### Checking the Nebius sign-in
+
+After filling in the Nebius settings, run this read-only check from `backend/`. It creates nothing and costs
+nothing:
+
+```bash
+python scripts/check_nebius.py
+```
+
+It signs in exactly as the backend does and shows which service account it is. It lists jobs in
+`NEBIUS_PROJECT_ID`, and tries to download a non-existent object from the results bucket with the reader key.
+Each step prints `OK` or `FAIL` with the reason. Secrets are never printed.
+
 ### Turning cloud benchmarks off
 
 Set `BENCH_CLOUD_ENABLED=0` and restart. New submissions are refused immediately, and local
