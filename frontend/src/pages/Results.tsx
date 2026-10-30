@@ -111,7 +111,7 @@ export function ResultsPage(props: {
   body: () => ConfigBody; onGoHardware: () => void;
 }): JSX.Element {
   const { mode, setMode, prediction } = props;
-  return <div className="space-y-3"><Section id="results" icon={Gauge} title="Results" hint="Will it fit, how long will it take and what will it cost? The estimate is calculated from your inputs; a benchmark measures a real run.">
+  return <div className="space-y-3"><Section id="results" icon={Gauge} title="Results" hint="Memory fit, training time and cost.">
     <div className="mb-3 flex gap-1" role="tablist" aria-label="Results mode">{(['prediction', 'benchmark'] as const).map((m) => <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`border px-3 py-1 text-xs capitalize ${mode === m ? 'border-violet bg-violet/15' : 'border-line text-[#a7a0bb]'}`}>{m === 'prediction' ? 'Estimate' : 'Benchmark'}</button>)}</div>
     {mode === 'prediction' ? <>
       {prediction.status === 'loading' && <p aria-live="polite" className="text-sm">Calculating…</p>}

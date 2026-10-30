@@ -1,0 +1,57 @@
+# Render Blueprint for the Compute Cast backend (FastAPI). In Render: New > Blueprint > pick this repo.
+# Values marked `sync: false` are secrets: Render asks for them when the Blueprint is first applied,
+# and they are never stored in this file. See DEPLOY.md.
+services:
+  - type: web
+    name: compute-cast-api
+    runtime: python
+    plan: starter            # a persistent disk needs a paid plan; see DEPLOY.md for the free option
+    region: frankfurt
+    buildCommand: pip install -r backend/requirements-cloud.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://denisele99.github.io
+      - key: BENCH_DATABASE_URL
+        value: sqlite:////var/data/bench.sqlite3
+      # Kill switch for cloud benchmarks: set to 1 once scripts/check_nebius.py passes.
+      - key: BENCH_CLOUD_ENABLED
+        value: "0"
+      - key: BENCH_SESSION_SECRET
+        generateValue: true
+      - key: BENCH_DEMO_PASSWORD
+        sync: false
+      - key: BENCH_ALLOWED_PLATFORMS
+        value: gpu-h100-sxm:1gpu-16vcpu-200gb
+      - key: BENCH_SESSION_ALLOWANCE_USD
+        value: "2"
+      - key: BENCH_GLOBAL_ALLOWANCE_USD
+        value: "5"
+      # Recommendations (NVIDIA Nemotron 3 Super via Nebius Token Factory)
+      - key: NEBIUS_API_KEY
+        sync: false
+      # Nebius Serverless Jobs (benchmark project); the credentials file is a Render Secret File
+      - key: NEBIUS_PROJECT_ID
+        sync: false
+      - key: NEBIUS_CREDENTIALS_FILE
+        value: /etc/secrets/credentials.json
+      - key: NEBIUS_RESULTS_BUCKET_ID
+        sync: false
+      - key: NEBIUS_RESULTS_BUCKET_NAME
+        sync: false
+      - key: NEBIUS_S3_ENDPOINT
+        value: https://storage.eu-north1.nebius.cloud
+      - key: NEBIUS_S3_REGION
+        value: eu-north1
+      - key: NEBIUS_S3_ACCESS_KEY_ID
+        sync: false
+      - key: NEBIUS_S3_SECRET_ACCESS_KEY
+        sync: false

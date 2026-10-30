@@ -147,6 +147,25 @@ def options():
     return rows
 
 
+def runtime_ready(row):
+    """True when the row has everything the runtime estimate needs (VRAM, BF16, FP32, bandwidth)."""
+    spec = row.get('specs') or {}
+    return bool(row.get('vram_gib') and spec.get('peak_tflops_bf16') and spec.get('peak_tflops_fp32')
+                and spec.get('memory_bandwidth_gb_s'))
+
+
+def choices():
+    """GPU dropdown: Nebius AI Cloud entries (catalogue specs merged in) and the catalogue GPUs that Nebius
+    does not offer. Only GPUs with every runtime parameter are listed; each GPU appears once per source."""
+    rows = [r for r in options() if runtime_ready(r)]
+    on_nebius = {r['specs']['catalog_gpu_id'] for r in rows if r['provider'] == 'nebius'}
+    nebius = sorted((r for r in rows if r['provider'] == 'nebius'),
+                    key=lambda r: (r['label'], r['price'] is None, (r['price'] or {}).get('region') or ''))
+    catalog = sorted((r for r in rows if r['provider'] == 'catalog' and r['specs']['catalog_gpu_id'] not in on_nebius),
+                     key=lambda r: r['label'])
+    return {'nebius': nebius, 'catalog': catalog}
+
+
 def search(query='', limit=MAX_RESULTS, offset=0):
     terms = [t for t in str(query).lower().replace('®', '').split() if t]
     matches = [r for r in options() if all(t in r['search_text'].replace('®', '') for t in terms)]

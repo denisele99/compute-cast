@@ -102,7 +102,7 @@ script, not GPU measurement. Training code is never imported or executed.
   `estimate()` returns the prototype's combined output. Parity with the prototype on
   `examples/gpt2_mvp/gpt2_estimator_input.json` is checked in `tests/test_api.py`.
 - The fit check compares `capacity_with_runtime_and_margin` against the **usable VRAM limit**
-  (`hardware.usable_vram_gib`, default 100% of VRAM) instead of total VRAM, so no second margin is applied.
+  (`hardware.usable_vram_gib`, default 90% of VRAM) instead of total VRAM, so no second margin is applied.
 - `gpt2_predict.py` builds the `model` / `training` / `hardware` / `estimator_policy` objects from the
   form, using `DEFAULT_POLICY` (the prototype's illustrative policy), and adds cost:
   `total_training_compute.seconds / 3600 × price per GPU-hour` (1 GPU).

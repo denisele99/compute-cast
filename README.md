@@ -13,6 +13,10 @@ no weights are downloaded and nothing runs on a GPU to produce the estimate.
 
 Inputs, fixed assumptions, formulas and the change log: **[MVP.md](MVP.md)**. Estimator formulas: [ESTIMATOR.md](backend/app/services/estimators/ESTIMATOR.md).
 
+## Publishing
+
+Backend on Render and frontend on GitHub Pages, both deployed from `main`. Setup steps are in **[DEPLOY.md](DEPLOY.md)**.
+
 ## Prerequisites
 
 Python 3.10+ and Node.js 22 LTS with npm.

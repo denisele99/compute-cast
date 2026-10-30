@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { acceptPending, applyCatalogue, applyFindings, applySuggestions, initialForm, lockReason, needsReview, setManual, toProvenance, toValues, visible } from './form.ts';
 import { classifyFit } from './fit.ts';
-import { pickScenarios } from './scenarios.ts';
 
 const schema = { fields: [{ key: 'training.gradient_accumulation_steps', default: 1 }, { key: 'training.batch_size_per_gpu', default: null }] } as never;
 const finding = (field: string, value: unknown, status = 'extracted') => ({ field, value, status, source: 'static_extraction', file: 'train.py', line: 3, message: null }) as never;
@@ -64,15 +63,14 @@ test('checkpoint dimensions are locked unless custom mode is on', () => {
   assert.ok(lockReason('model.num_layers', 'custom_only', form, {}));
   assert.equal(lockReason('model.num_layers', 'custom_only', form, { 'model.custom_config': true }), null);
   assert.equal(lockReason('model.num_layers', 'custom_only', setManual({}, 'model.num_layers', 6), {}), null);
-  const hw = applyCatalogue({}, { 'hardware.vram_gib': 80 }, 'H100').form;
-  assert.ok(lockReason('hardware.vram_gib', true, hw, {}));
-  assert.equal(lockReason('hardware.vram_gib', true, hw, { 'hardware.source': 'custom' }), null);
+  const hw = applyCatalogue({}, { 'hardware.vram_gib': 80, 'hardware.bf16_dense_tflops': 989 }, 'H100').form;
+  assert.equal(lockReason('hardware.vram_gib', true, hw, {}), null);  // VRAM stays editable
+  assert.ok(lockReason('hardware.bf16_dense_tflops', true, hw, {}));
+  assert.equal(lockReason('hardware.bf16_dense_tflops', true, hw, { 'hardware.source': 'custom' }), null);
 });
 
-test('fit classification and no-op scenarios', () => {
+test('fit classification', () => {
   assert.equal(classifyFit(10, 24).kind, 'fits');
   assert.equal(classifyFit(22, 24).kind, 'tight');
   assert.equal(classifyFit(25, 24).kind, 'exceeds');
-  const v = { 'training.microbatch_size': 1, 'data.sequence_length': 64 };
-  assert.ok(pickScenarios('balanced').every((s) => s.change(v) === null));
 });

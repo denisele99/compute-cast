@@ -88,7 +88,7 @@ class FlowTests(unittest.TestCase):
         self.assertEqual({s for f in ext['files'] for s in f['sections']}, {'model', 'training', 'data'})
         self.assertFalse(ext['executed_code'])
         hw = self.hardware()
-        self.assertEqual(hw['hardware.usable_vram_gib'], hw['hardware.vram_gib'])  # 100% default
+        self.assertEqual(hw['hardware.usable_vram_gib'], 0.9 * hw['hardware.vram_gib'])  # 90% default
         result = self.predict({**values, **hw})
         self.assertEqual(result['status'], 'ok')
         self.assertEqual(result['parameters'], 124_439_808)
@@ -99,6 +99,25 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(result['cost']['unit'], 'gpu_hour')
         self.assertEqual(result['inputs']['training']['microbatch_size'], 8)
         self.assertEqual(result['inputs']['training']['sequence_length'], 512)
+
+    def test_gpu_dropdown_is_merged_and_runtime_complete(self):
+        groups = self.c.get('/api/hardware/options').json()
+        self.assertTrue(groups['nebius'] and groups['catalog'])
+        for row in groups['nebius'] + groups['catalog']:
+            values = self.c.get(f"/api/hardware/options/{row['id']}").json()['values']
+            for key in ('hardware.vram_gib', 'hardware.bf16_dense_tflops', 'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps'):
+                self.assertTrue(values[key], (row['id'], key))
+        catalog_ids = {r['id'] for r in groups['catalog']}
+        self.assertNotIn('catalog:nvidia_h100_sxm_80gb', catalog_ids)        # offered on Nebius: listed once there
+        self.assertIn('catalog:nvidia_a100_80gb_pcie', catalog_ids)          # not on Nebius
+        self.assertFalse(any('b300' in r['id'] or 'rtx' in r['id'] for r in groups['nebius'] + groups['catalog']))  # incomplete specs
+
+    def test_usable_vram_defaults_to_90_percent(self):
+        _, values = self.load()
+        values.update({'hardware.vram_gib': 40.0, 'hardware.usable_vram_gib': None})
+        check = self.c.post(self.url('/validate'), json={'values': values}).json()
+        self.assertEqual(check['values']['hardware.usable_vram_gib'], 36.0)
+        self.assertEqual(check['suggestions']['hardware.usable_vram_gib']['value'], 36.0)
 
     def test_memory_only_on_custom_gpu_without_specs(self):
         _, values = self.load()

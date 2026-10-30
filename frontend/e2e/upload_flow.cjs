@@ -56,21 +56,27 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   const review = page.getByRole('button', { name: 'Mark all reviewed' }); if (await review.count()) await review.click();
   await page.getByRole('button', { name: 'Continue to hardware' }).click();
 
-  const preloaded = await page.locator('#preloaded-gpus option').count();
-  expect(preloaded > 10, `pre-loaded GPU dropdown lists all GPUs (${preloaded - 1})`);
+  expect(await page.getByRole('combobox', { name: /Search/ }).count() === 0, 'no search bar, dropdown only');
+  expect(await page.getByRole('radio', { name: 'Nebius AI Cloud' }).getAttribute('aria-checked') === 'true', 'Nebius AI Cloud selected by default');
   expect(await f('hardware.price_per_hour').inputValue() === '0', 'price defaults to 0');
   expect(await page.getByText('GPU name', { exact: true }).count() > 0, 'field labelled GPU name');
-  await page.getByRole('combobox', { name: 'Search Nebius AI Cloud and GPU catalogue' }).fill('h100');
-  const results = page.getByRole('listbox', { name: 'Hardware search results' }).getByRole('option');
-  await results.filter({ hasText: /H100/ }).first().waitFor();
-  expect(await results.count() <= 10, 'at most 10 hardware results');
-  expect(/80 GiB/.test(await results.first().innerText()) && /GPU-hour/.test(await results.first().innerText()), 'autocomplete option shows VRAM and price unit');
-  await page.screenshot({ path: path.join(shots, '02a-hardware-autocomplete.png') });
-  await results.first().click();
+  const gpuSelect = page.getByLabel('Nebius AI Cloud GPU');
+  const nebiusOptions = await gpuSelect.locator('option').allInnerTexts();
+  expect(nebiusOptions.some((o) => /H100.*eu-north1.*80 GiB.*GPU-hour/.test(o)) && !nebiusOptions.some((o) => /B300|RTX/.test(o)), 'Nebius dropdown lists runtime-complete GPUs with region and price');
+  await page.getByRole('radio', { name: 'GPU catalogue' }).click();
+  const catalogOptions = await page.getByLabel('Catalogue GPU').locator('option').allInnerTexts();
+  expect(catalogOptions.some((o) => /A100/.test(o)) && !catalogOptions.some((o) => /H100/.test(o)), 'catalogue lists only GPUs not already on Nebius');
+  await page.getByRole('radio', { name: 'Nebius AI Cloud' }).click();
+  await page.getByLabel('Nebius AI Cloud GPU').selectOption({ label: nebiusOptions.find((o) => /H100.*eu-north1/.test(o)) });
   await page.waitForTimeout(900);
-  await page.getByText('Advanced hardware settings (optional)').click();
   expect(await f('hardware.vram_gib').inputValue() === '80', 'VRAM from catalogue');
-  expect(await f('hardware.usable_vram_gib').inputValue() === '80', 'usable limit defaults to 100% of VRAM');
+  expect(await f('hardware.usable_vram_gib').inputValue() === '72', 'usable limit defaults to 90% of VRAM');
+  expect(!(await f('hardware.vram_gib').isDisabled()) && !(await f('hardware.usable_vram_gib').isDisabled()), 'total and usable VRAM both editable');
+  await f('hardware.vram_gib').fill('60');
+  await page.waitForTimeout(900);
+  expect(await f('hardware.usable_vram_gib').inputValue() === '54', 'usable limit follows total VRAM until edited');
+  await f('hardware.vram_gib').fill('80');
+  await page.waitForTimeout(900);
   expect(await f('hardware.bf16_dense_tflops').isDisabled(), 'catalogue specs locked unless Custom GPU');
   expect(await f('hardware.price_unit').inputValue() === 'gpu_hour', 'price unit autofilled');
   await page.screenshot({ path: path.join(shots, '02-hardware.png'), fullPage: true });
@@ -79,7 +85,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   await page.getByText(/usable VRAM limit per GPU \(/).waitFor({ timeout: 20000 });
   const res = await page.locator('#results').innerText();
   expect(/Estimated fit/i.test(res), 'fit verdict shown');
-  expect(/80\.00 GiB of 80\.00 GiB total/.test(res), 'usable/total denominator shown');
+  expect(/72\.00 GiB of 80\.00 GiB total/.test(res), 'usable/total denominator shown');
   expect(/124,439,808 parameters/.test(res), 'GPT-2 parameter count');
   expect(/per optimizer update/.test(res) && !/optimizer updates ×/.test(res), 'runtime shown without the equation');
   expect(/\$0\.\d\d|< \$0\.01/.test(res), 'job cost shown');
@@ -93,10 +99,11 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   await page.screenshot({ path: path.join(shots, '03-results.png'), fullPage: true });
 
   await page.getByRole('tab', { name: 'Benchmark' }).click();
-  await page.getByText('Review benchmark setup (benchmark_config.json)').waitFor({ timeout: 20000 });
-  expect(await page.getByRole('button', { name: /Hide setup/ }).getAttribute('aria-expanded') === 'true', 'benchmark setup open by default');
+  await page.getByText('Review benchmark setup', { exact: true }).waitFor({ timeout: 20000 });
+  expect(await page.getByRole('button', { name: /Show setup/ }).getAttribute('aria-expanded') === 'false', 'benchmark setup collapsed by default');
+  await page.getByRole('button', { name: /Show setup/ }).click();
   let bench = await page.locator('#results').innerText();
-  expect(/synthetic token ids/i.test(bench), 'synthetic-input scope explained');
+  expect(/synthetic data/i.test(bench), 'synthetic-input scope explained');
   expect(/detected/i.test(bench) && /assumption/i.test(bench) && /default/i.test(bench), 'provenance shown (detected/default/assumption)');
   expect(/Memory check/i.test(bench) && /fits/i.test(bench), 'memory check against VRAM with safety margin');
   // Small shapes so the optional CPU smoke run is quick; edits are kept across regeneration.
@@ -181,6 +188,7 @@ const expect = (cond, msg) => { if (!cond) throw new Error('ASSERTION FAILED: ' 
   await page.route('**/api/analysis/*/advice/apply', (r) => r.fulfill({ json: { applied: {}, original_kept: true } }));
   await page.getByRole('button', { name: 'Improve this plan' }).click();
   await page.getByText('Powered by NVIDIA Nemotron 3 Super').waitFor();
+  expect(await page.getByText('Reduce memory', { exact: true }).count() === 1 && await page.getByText(/what-ifs/i).count() === 0, 'reduce-memory goal; no quick what-ifs');
   await page.getByText('Lowest cost', { exact: true }).click();
   await page.getByText('Consider other GPUs').click();
   await page.getByRole('button', { name: 'Use example training script' }).click();
