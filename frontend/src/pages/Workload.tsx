@@ -1,5 +1,5 @@
 import { ChangeEvent, DragEvent, useEffect, useState } from 'react';
-import { FileArchive, Upload, X } from 'lucide-react';
+import { Boxes, Brain, Database, Dumbbell, Eye, FileArchive, FileText, Rocket, TriangleAlert, Upload, X } from 'lucide-react';
 import { Extraction, UploadedFile, api } from '../api';
 import { AssumptionsPanel, FieldGrid, FormCtx } from '../components/FieldGrid';
 import { Accordion, Alert, Badge, Section } from '../components/ui';
@@ -19,40 +19,62 @@ function FileChip({ f, onRemove }: { f: UploadedFile; onRemove: () => void }): J
     <button type="button" aria-label={`Remove ${f.name}`} onClick={onRemove} className="ml-auto text-[#a7a0bb] hover:text-white"><X size={12} /></button></li>;
 }
 
+function ExamplePreview({ example, onLoad, onClose, busy }: { example: { id: string; label: string; files: string[] }; onLoad: () => void; onClose: () => void; busy: boolean }): JSX.Element {
+  const [name, setName] = useState(example.files[0]); const [text, setText] = useState<string | null>(null); const [error, setError] = useState('');
+  useEffect(() => { setText(null); setError(''); api.previewExample(example.id, name).then((r) => setText(r.content)).catch((e) => setError(e instanceof Error ? e.message : String(e))); }, [example.id, name]);
+  useEffect(() => { const esc = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', esc); return () => document.removeEventListener('keydown', esc); }, [onClose]);
+  return <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-label={`Preview: ${example.label}`} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="flex max-h-[85vh] w-full max-w-3xl flex-col border border-line bg-[#11111a]">
+      <div className="flex items-center gap-2 border-b border-line px-3 py-2"><Eye size={14} aria-hidden /><strong className="text-sm">{example.label}</strong><span className="text-[11px] text-[#8e899b]">read-only preview</span>
+        <button type="button" aria-label="Close preview" onClick={onClose} className="ml-auto"><X size={14} /></button></div>
+      <div className="flex flex-wrap gap-1 border-b border-line px-3 py-2" role="tablist" aria-label="Example files">{example.files.map((f) => <button key={f} role="tab" aria-selected={f === name} type="button" onClick={() => setName(f)}
+        className={`flex items-center gap-1 border px-2 py-0.5 text-[11px] ${f === name ? 'border-violet bg-violet/15' : 'border-line'}`}><FileText size={11} aria-hidden />{f}</button>)}</div>
+      <pre className="flex-1 overflow-auto p-3 font-mono text-[11px] leading-4 text-[#d8d3e3]">{error || (text ?? 'Loading…')}</pre>
+      <div className="flex justify-end gap-2 border-t border-line px-3 py-2"><button type="button" onClick={onClose} className="border border-line px-3 py-1 text-xs">Close</button>
+        <button type="button" disabled={busy} onClick={() => { onLoad(); onClose(); }} className="bg-white px-3 py-1 text-xs font-semibold text-black disabled:opacity-40">Use these files</button></div>
+    </div></div>;
+}
+
 function StartPanel({ ctx, h }: { ctx: FormCtx; h: UploadHandlers }): JSX.Element {
   const [models, setModels] = useState<{ id: string; summary: string }[]>([]);
-  const [choice, setChoice] = useState(''); const [drag, setDrag] = useState(false);
+  const [choice, setChoice] = useState(''); const [drag, setDrag] = useState(false); const [preview, setPreview] = useState<string | null>(null);
   useEffect(() => { api.hfSearch('').then((r) => { setModels(r.items); setChoice(r.items[0]?.id ?? ''); }).catch(() => setModels([])); }, []);
   const files = (h.extraction?.files ?? []).filter((f) => f.origin !== 'huggingface');
   const hfFile = (h.extraction?.files ?? []).find((f) => f.origin === 'huggingface');
-  const uploadedModel = files.some((f) => f.sections.includes('model'));
+  // Training scripts can sit next to a Hugging Face model; only an uploaded model *config* blocks it.
+  const uploadedModel = files.some((f) => f.sections.includes('model') && !f.name.endsWith('.py'));
   const exts = ctx.schema.uploads.allowed_extensions;
   const drop = (e: DragEvent) => { e.preventDefault(); setDrag(false); if (e.dataTransfer.files.length) h.onUpload(Array.from(e.dataTransfer.files)); };
-  return <Section number="00" title="Start" hint="Pick ONE model source: a Hugging Face checkpoint or your own model config/script. Training and data files work with either.">
-    <div className="grid gap-3 lg:grid-cols-[1fr_auto_1.4fr]">
+  const shown = ctx.schema.examples.find((x) => x.id === preview);
+  return <Section icon={Rocket} title="Start" hint="Tell us which model you are training. Choose a Hugging Face model, or upload your own model config and/or script. Training and data files work with either.">
+    <div className="space-y-2">
       <div className="border border-line p-3">
-        <p className="mb-2 text-xs font-semibold">A · Hugging Face model</p>
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold"><Boxes size={13} aria-hidden /> Hugging Face model</p>
         {hfFile && h.extraction?.huggingface_model ? <div className="flex items-center gap-2 border border-violet bg-violet/10 px-2 py-1 text-xs">
           <span className="font-mono">{h.extraction.huggingface_model}</span><Badge kind="muted">config.json only</Badge>
           <button type="button" aria-label="Remove Hugging Face model" onClick={() => h.onRemove(hfFile)} className="ml-auto"><X size={12} /></button></div>
           : <div className="flex gap-2"><select aria-label="Hugging Face model" className="field-sm" value={choice} onChange={(e) => setChoice(e.target.value)} disabled={uploadedModel}>
               {models.map((m) => <option key={m.id} value={m.id}>{m.id} — {m.summary}</option>)}</select>
             <button type="button" className="border border-line px-3 text-xs disabled:opacity-40" disabled={!choice || uploadedModel || !!h.busy} onClick={() => h.onHf(choice)}>Use</button></div>}
-        <p className="mt-2 text-[11px] text-[#8e899b]">{uploadedModel ? 'Disabled: an uploaded file already defines the model. Remove it to use Hugging Face.' : 'MVP: standard GPT-2 checkpoints only. Reads config.json; weights are never downloaded.'}</p>
+        <p className="mt-2 text-[11px] text-[#8e899b]">{uploadedModel ? 'Disabled: an uploaded model config already defines the model. Remove it to use Hugging Face.' : 'Standard GPT-2 checkpoints only. We read config.json; weights are never downloaded. You can still upload your training script below.'}</p>
       </div>
-      <div className="flex items-center justify-center text-xs font-semibold text-[#8e899b]">OR</div>
+      <div className="flex items-center gap-3 text-[11px] text-[#a7a0bb]"><span className="h-px flex-1 bg-line" /><span><strong className="text-white">OR</strong> upload a model config and/or script <span className="text-[#8e899b]">(only PyTorch is supported)</span></span><span className="h-px flex-1 bg-line" /></div>
       <div className="border border-line p-3">
-        <p className="mb-2 text-xs font-semibold">B · Upload files <span className="font-normal text-[#8e899b]">(multiple files or a .zip)</span></p>
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold"><Upload size={13} aria-hidden /> Upload files <span className="font-normal text-[#8e899b]">(multiple files or a .zip)</span></p>
         <label onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={drop}
           className={`flex cursor-pointer items-center gap-3 border border-dashed px-3 py-2 text-xs ${drag ? 'border-white bg-violet/20' : 'border-violet bg-violet/5'}`}>
-          <Upload size={16} /><span><strong>Drop or choose files</strong><span className="block text-[11px] text-[#a7a0bb]">config.json, model.py, training args/train.py, tokenizer/collator/preprocessing config, data sample · {exts.join(' ')} · parsed statically, never executed</span></span>
+          <Upload size={16} /><span><strong>Drop or choose files</strong><span className="block text-[11px] text-[#a7a0bb]">config.json, model.py, training args/train.py, tokenizer/collator/preprocessing config, data sample · {exts.join(' ')} · read as text, never executed</span></span>
           <input type="file" multiple accept={exts.join(',')} className="sr-only" aria-label="Upload files" disabled={!!h.busy}
             onChange={(e: ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) h.onUpload(Array.from(e.target.files)); e.target.value = ''; }} /></label>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]"><FileArchive size={12} className="text-[#8e899b]" /><span className="text-[#8e899b]">No files handy? Load an example:</span>
-          {ctx.schema.examples.map((ex) => <button key={ex.id} type="button" className="border border-line px-2 py-0.5 hover:border-white/50" disabled={!!h.busy} onClick={() => h.onExample(ex.id)}>{ex.label}</button>)}</div>
+        {hfFile && <p className="mt-1 text-[11px] text-[#8e899b]">With a Hugging Face model selected, upload training scripts, training configs and data samples here. Model settings in scripts are ignored; a second model config.json is reported as a conflict.</p>}
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]"><FileArchive size={12} className="text-[#8e899b]" /><span className="text-[#8e899b]">No files handy? Try an example:</span>
+          {ctx.schema.examples.map((ex) => <span key={ex.id} className="inline-flex border border-line">
+            <button type="button" className="px-2 py-0.5 hover:bg-white/5" disabled={!!h.busy} onClick={() => h.onExample(ex.id)}>{ex.label}</button>
+            <button type="button" aria-label={`Preview ${ex.label}`} title="Preview the example files" className="border-l border-line px-1.5 hover:bg-white/5" onClick={() => setPreview(ex.id)}><Eye size={12} /></button></span>)}</div>
         {files.length > 0 && <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Uploaded files">{files.map((f) => <FileChip key={f.file_id} f={f} onRemove={() => h.onRemove(f)} />)}</ul>}
       </div>
     </div>
+    {shown && <ExamplePreview example={shown} busy={!!h.busy} onLoad={() => h.onExample(shown.id)} onClose={() => setPreview(null)} />}
     <div className="mt-2 space-y-1">
       {new Set((h.extraction?.model_sources ?? []).map((m) => m.kind)).size > 1 && <Alert kind="error"><strong>Two model sources.</strong> Use ONE model source:
         remove the Hugging Face model ({h.extraction?.huggingface_model}) or the uploaded model file(s) ({h.extraction?.model_sources.filter((m) => m.kind === 'upload').map((m) => m.name).join(', ')}).</Alert>}
@@ -69,7 +91,7 @@ function StartPanel({ ctx, h }: { ctx: FormCtx; h: UploadHandlers }): JSX.Elemen
 function Conflicts({ ctx, acknowledged, onToggle }: { ctx: FormCtx; acknowledged: string[]; onToggle: (id: string) => void }): JSX.Element | null {
   const list = ctx.validation?.conflicts ?? [];
   if (!list.length) return null;
-  return <Section number="!" title="Unsupported settings in your files" hint="Nothing is replaced silently. Choose a supported hypothetical scenario, or change/remove the file.">
+  return <Section icon={TriangleAlert} title="Unsupported settings in your files" hint="Your files ask for settings this version can't estimate. Nothing is replaced silently: choose the supported scenario to estimate anyway, or change the file.">
     <ul className="space-y-1">{list.map((c) => { const on = acknowledged.includes(c.id);
       return <li key={c.id} className={`flex flex-wrap items-center gap-2 border px-2 py-1.5 text-xs ${on ? 'border-[#8a7430]' : 'border-[#8a3040]'}`}>
         <Badge kind={on ? 'warn' : 'bad'}>{c.section}</Badge><span className="font-mono text-[11px]">{c.setting}</span>
@@ -92,17 +114,17 @@ export function WorkloadPage({ ctx, handlers, acknowledged, onToggleConflict, re
     {reviewKeys.length > 0 && <Alert kind="warn"><strong>Review autofilled values:</strong> {reviewKeys.map(label).join(', ')}. Values with a red icon came from scripts or uncertain sources.
       <button type="button" onClick={onReviewAll} className="ml-2 border border-[#8a7430] px-2 py-0.5">Mark all reviewed</button></Alert>}
 
-    <Section number="01" title="Model" hint="Standard GPT-2 causal decoder (PyTorch)." actions={<label className="flex items-center gap-1.5 text-[11px]">
+    <Section icon={Brain} title="Model" hint="The size and shape of your GPT-2 model. These decide how much memory the weights and activations need." actions={<label className="flex items-center gap-1.5 text-[11px]">
       <input type="checkbox" checked={custom} onChange={(e) => ctx.setField('model.custom_config', e.target.checked)} /> Hypothetical custom configuration</label>}>
       {custom && <div className="mb-2"><Alert kind="warn">Custom mode: checkpoint dimensions are editable and results are labelled hypothetical.</Alert></div>}
       <FieldGrid ctx={ctx} section="model" exclude={['model.custom_config']} />
     </Section>
 
-    <Section number="02" title="Training" hint="Per GPU (one GPU in v1).">
+    <Section icon={Dumbbell} title="Training" hint="How you train: examples per step, how many steps you accumulate, and how long you train (per GPU; one GPU in this version).">
       <FieldGrid ctx={ctx} section="training" />
     </Section>
 
-    <Section number="03" title="Data" hint="Post-processed, fixed-length sequences. A dataset upload is not required."
+    <Section icon={Database} title="Data" hint="How long each training sequence is and how many examples you have. You don't need to upload the dataset."
       actions={samples.length > 0 ? <button type="button" className="text-[11px] underline" onClick={() => setShowSample(!showSample)}>{showSample ? 'Hide' : 'Show'} sample statistics ({samples.length})</button> : undefined}>
       <FieldGrid ctx={ctx} section="data" />
       {showSample && samples.map((s) => <div key={s.file} className="mt-2 border border-line bg-[#11111a] p-2 text-[11px]"><p className="eyebrow mb-1">{s.file} · sample only, not the full dataset</p>

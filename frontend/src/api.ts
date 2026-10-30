@@ -51,9 +51,10 @@ export type Prediction = {
   memory: Record<string, number>; fit: Fit; runtime: Runtime | null; runtime_error: string | null; runtime_missing: string[];
   cost: Cost; benchmark_cost: BenchmarkCost;
   explanation: { formulas: Record<string, string>; policy: Record<string, number | string>; fixed_assumptions: FixedAssumption[]; scope: string; limitations: string[] };
-  snapshots: { original: { captured_at: number; values: Values; result_summary: { capacity_gib?: number; training_hours?: number | null; cost?: number | null } } | null;
+  snapshots: { original: { captured_at: number; values: Values; result_summary: RunSummary } | null;
     changes: { field: string; label: string; original: Json; current: Json }[]; is_original_run: boolean };
 };
+export type RunSummary = { capacity_gib?: number; allocated_peak_gib?: number; training_hours?: number | null; cost?: number | null; seconds_per_update?: number | null; optimizer_updates?: number | null; percent_of_usable?: number; parameters?: number };
 export type CompareRow = { id: string; label: string; region: string | null; issues: string[]; price: Price | null; status: string; fit?: Fit; hours?: number | null; cost?: number | null; runtime_missing?: string[] };
 export type Provenance = 'detected' | 'user' | 'default' | 'assumption';
 export type BenchConfig = { [section: string]: Json };
@@ -81,11 +82,23 @@ export type BenchRecord = { kind: 'benchmark'; source: string; result: BenchRunR
   full_run_projection: { optimizer_updates: number; hours: number; label: string } | null };
 export type BenchAllowance = { limit_usd: number; reserved_usd: number; used_estimated_usd: number; available_usd: number } | null;
 export type BenchStatus = { cloud_enabled: boolean; missing_configuration: string[]; provider: string; simulated: boolean; cancel_enabled: boolean; runner_max_seconds: number;
-  startup_grace_seconds: number; platform_timeout_hours: number; reservation_per_job_usd: number; active_jobs: number; global: BenchAllowance; session?: BenchAllowance; notes: string[] };
+  startup_grace_seconds: number; platform_timeout_hours: number; reservation_per_job_usd: number; active_jobs: number; image?: string | null; image_warnings?: string[]; global: BenchAllowance; session?: BenchAllowance; notes: string[] };
 export type BenchJob = { id: string; state: string; terminal: boolean; resumable: false; provider: string; simulated: boolean; platform: string; preset: string; provider_state: string | null;
   provider_message: string | null; created_at: number; elapsed_seconds: number | null; provider_run_seconds: number | null; deadline_at: number; reserved_usd: number;
   estimated_charge_usd: number | null; cost_label: string; error: { type: string; message: string } | null; results: BenchRunResult | null };
 export type BenchSession = { token: string; expires_at: number; display_name: string; note: string };
+
+export type OptionSummary = { id: string; provider: 'nebius' | 'catalog'; platform: string | null; label: string; vram_gib: number | null; price: Price | null; issues: string[]; has_specs: boolean };
+export type AdvicePrefs = { goal: 'shortest_time' | 'lowest_cost' | 'fit_memory' | 'highest_throughput' | 'balanced'; resources: 'current' | 'alternatives';
+  preserve_effective_batch: boolean; preserve_precision: boolean; preserve_sequence_length: boolean; preserve_training_method: boolean;
+  budget_usd: number | null; max_gpus: number | null; notes: string };
+export type AdviceRec = { id: string; title: string; category: string; explanation: string; parameter_changes: Record<string, number>; hardware_option_id: string | null;
+  hardware: { id: string; label: string; region: string | null; cost_usd: number | null; training_hours: number | null } | null; expected_effect: string; tradeoffs: string[];
+  affected_files: string[]; issues: string[]; violations: string[]; estimable: boolean; applicable: boolean; new_values: Values; estimate_note: string | null };
+export type Advice = { model: string; original_summary: string; suggestions_summary: string; recommendations: AdviceRec[];
+  changed_files: { path: string; action: 'modify' | 'create'; reason: string; content: string }[]; files_check: { diff: string; limitations: string } | null;
+  assumptions: string[]; missing_information: string[]; files_reviewed: string[]; note: string };
+export type AdviceStatus = { configured: boolean; model: string; code_kinds: string[]; goals: Record<string, string>; note: string };
 
 const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '';
 
@@ -142,5 +155,12 @@ export const api = {
   benchJob: (token: string, jobId: string) => request<BenchJob>(`/api/bench/jobs/${encodeURIComponent(jobId)}`, { headers: auth(token) }),
   benchJobs: (token: string) => request<{ jobs: BenchJob[] }>('/api/bench/jobs', { headers: auth(token) }),
   benchCancel: (token: string, jobId: string) => post<BenchJob>(`/api/bench/jobs/${encodeURIComponent(jobId)}/cancel`, {}, token),
+  hardwareAll: () => request<{ items: OptionSummary[]; price_snapshot: string | null }>('/api/hardware/options'),
+  previewExample: (exampleId: string, name: string) => request<{ name: string; content: string }>(`/api/analysis/examples/${encodeURIComponent(exampleId)}/files/${encodeURIComponent(name)}`),
+  adviceStatus: () => request<AdviceStatus>('/api/recommendations/status'),
+  adviceExamples: () => request<{ files: Record<string, string> }>('/api/recommendations/examples'),
+  advice: (id: string, body: ConfigBody & { preferences: AdvicePrefs; files: Record<string, string> }) => post<Advice>(`/api/analysis/${id}/advice`, body),
+  adviceApply: (id: string, recommendation_ids: string[], values: Values) => post<{ applied: unknown; original_kept: boolean }>(`/api/analysis/${id}/advice/apply`, { recommendation_ids, values }),
+  adviceExportUrl: (id: string) => `${apiBase}/api/analysis/${id}/advice/export`,
   fileUrl: (id: string) => `${apiBase}/api/analysis/${id}/files/estimator_input.json`,
 };

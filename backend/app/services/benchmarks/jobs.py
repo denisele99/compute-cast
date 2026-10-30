@@ -54,6 +54,7 @@ class JobService:
                'platform_timeout_hours': p.platform_timeout_hours, 'reservation_per_job_usd': self.reservation_usd(),
                'active_jobs': len(self.store.active_jobs()), 'max_concurrent_jobs': 1,
                'allowed_platforms': p.allowed_platforms, 'global': self._allowance(GLOBAL_KEY),
+               'image': p.image, 'image_warnings': p.image_warnings(),
                'notes': ['Allowances are reservations inside Compute Cast, not a Nebius spending cap.',
                          'Nebius budget alerts notify; they do not stop spending. No maximum bill is guaranteed.']}
         if session:

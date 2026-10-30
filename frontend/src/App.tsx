@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Menu, RotateCcw } from 'lucide-react';
-import { CompareRow, ConfigBody, Extraction, HardwareOption, Json, Prediction, Schema, UploadResponse, UploadedFile, Validation, api } from './api';
+import { ArrowRight, ChevronRight, Cpu, Gauge, Layers, Menu, RotateCcw, Sparkles, type LucideIcon } from 'lucide-react';
+import { AdviceRec, CompareRow, ConfigBody, Extraction, HardwareOption, Json, Prediction, Schema, UploadResponse, UploadedFile, Validation, api } from './api';
 import { FormCtx } from './components/FieldGrid';
 import { Alert } from './components/ui';
 import { FormState, acceptPending, applyCatalogue, applyFindings, applySuggestions, dismissPending, initialForm, markReviewed, needsReview, setManual, toProvenance, toValues, visible } from './lib/form';
@@ -11,7 +11,7 @@ import { Async, ResultsPage } from './pages/Results';
 import { WorkloadPage } from './pages/Workload';
 
 type Step = 'workload' | 'hardware' | 'results' | 'recs';
-const stepLabels: [Step, string][] = [['workload', 'Workload'], ['hardware', 'Hardware'], ['results', 'Results'], ['recs', 'Recommendations']];
+const stepLabels: [Step, string, LucideIcon][] = [['workload', 'Workload', Layers], ['hardware', 'Hardware', Cpu], ['results', 'Results', Gauge], ['recs', 'Recommendations', Sparkles]];
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const CATALOGUE_KEYS = ['hardware.gpu_name', 'hardware.catalog_gpu_id', 'hardware.vram_gib', 'hardware.usable_vram_gib', 'hardware.bf16_supported', 'hardware.bf16_dense_tflops',
   'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps', 'hardware.price_per_hour', 'hardware.price_unit', 'hardware.price_region', 'hardware.price_note'];
@@ -25,7 +25,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   const [acknowledged, setAcknowledged] = useState<string[]>([]);
   const [uploadBusy, setUploadBusy] = useState<string | null>(null); const [uploadError, setUploadError] = useState('');
   const [mode, setMode] = useState<'prediction' | 'benchmark'>('prediction');
-  const [prediction, setPrediction] = useState<Async<Prediction>>({ status: 'idle' });
+  const [prediction, setPrediction] = useState<Async<Prediction>>({ status: 'idle' }); const [originalPrediction, setOriginalPrediction] = useState<Prediction | null>(null);
   const [compare, setCompare] = useState<Async<{ rows: CompareRow[]; note: string }>>({ status: 'idle' });
   const [scen, setScen] = useState<Record<string, ScenarioState>>({});
   const values = useMemo(() => toValues(form), [form]);
@@ -65,7 +65,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
 
   async function reset(): Promise<void> {
     if (analysisId) { try { await api.resetAnalysis(analysisId); } catch { /* expiry sweeping is the backstop */ } }
-    setForm(initialForm(schema)); setValidation(null); setExtraction(null); setKept([]); setSkipped([]); setAcknowledged([]); setPrediction({ status: 'idle' }); setCompare({ status: 'idle' });
+    setForm(initialForm(schema)); setValidation(null); setExtraction(null); setKept([]); setSkipped([]); setAcknowledged([]); setPrediction({ status: 'idle' }); setOriginalPrediction(null); setCompare({ status: 'idle' });
     setScen({}); setStep('workload'); setMode('prediction'); setAnalysisId('');
     setNonce((n) => n + 1);
   }
@@ -116,10 +116,20 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
     setTimeout(() => { const el = document.getElementById(`field-${key}`); el?.scrollIntoView({ behavior: 'smooth', block: 'center' }); (el as HTMLElement | null)?.focus(); }, 80);
   }
 
-  async function runPrediction(): Promise<void> {
+  async function runPrediction(override?: Record<string, Json>): Promise<void> {
     go('results'); setMode('prediction'); setPrediction({ status: 'loading' }); setCompare({ status: 'idle' }); setScen({});
-    try { setPrediction({ status: 'ok', data: await api.predict(analysisId, body()) }); document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' }); }
-    catch (e) { setPrediction({ status: 'error', error: message(e) }); }
+    try {
+      const data = await api.predict(analysisId, override ? { ...body(), values: override } : body());
+      setPrediction({ status: 'ok', data }); if (data.snapshots?.is_original_run) setOriginalPrediction(data);
+      document.getElementById('results')?.scrollIntoView({ behavior: 'smooth' });
+    } catch (e) { setPrediction({ status: 'error', error: message(e) }); }
+  }
+  /** Apply an AI suggestion: update the form, save the values with the analysis (original kept), re-estimate. */
+  async function applyAdvice(rec: AdviceRec): Promise<void> {
+    const merged = { ...values, ...rec.new_values };
+    setForm((f) => { let next = f; for (const [k, v] of Object.entries(rec.new_values)) if (JSON.stringify(v) !== JSON.stringify(values[k])) next = setManual(next, k, v as Json); return next; });
+    await api.adviceApply(analysisId, [rec.id], merged);
+    await runPrediction(merged);
   }
   async function runCompare(): Promise<void> {
     setCompare({ status: 'loading' });
@@ -155,7 +165,10 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight">Plan your training run</h1><p className="mt-1 text-xs text-[#a7a0bb]">MVP: standard GPT-2 · PyTorch · analytical estimates · uploads are parsed statically, never executed.</p></div>
       <button type="button" onClick={() => void reset()} className="flex items-center gap-1.5 border border-line px-2.5 py-1.5 text-xs"><RotateCcw size={12} /> New analysis (clears uploads)</button></div>
     {sessionError && <div className="mt-3"><Alert kind="error">{sessionError}</Alert></div>}
-    <nav aria-label="Steps" className="my-4 flex flex-wrap gap-1.5">{stepLabels.map(([id, label], i) => <button key={id} disabled={!reached(id)} aria-current={step === id ? 'step' : undefined} onClick={() => go(id)} className={`border px-3 py-1.5 text-xs ${step === id ? 'border-violet bg-violet/15 text-white' : 'border-line text-[#a7a0bb] disabled:opacity-40'}`}>{i + 1}. {label}</button>)}</nav>
+    <nav aria-label="Steps" className="my-4"><ol className="flex flex-wrap items-center gap-1">{stepLabels.map(([id, label, Icon], i) => <li key={id} className="flex items-center gap-1">
+      {i > 0 && <ChevronRight size={14} className={reached(id) ? 'text-[#8e7cea]' : 'text-[#4a4658]'} aria-hidden />}
+      <button disabled={!reached(id)} aria-current={step === id ? 'step' : undefined} onClick={() => go(id)}
+        className={`flex items-center gap-1.5 border px-3 py-1.5 text-xs ${step === id ? 'border-violet bg-violet/15 text-white' : 'border-line text-[#a7a0bb] disabled:opacity-40'}`}><Icon size={13} aria-hidden />{label}</button></li>)}</ol></nav>
     {!analysisId ? <p className="text-sm text-[#a7a0bb]">Starting analysis…</p> : <>
       {step === 'workload' && <WorkloadPage ctx={ctx} reviewKeys={reviewKeys} onReviewAll={() => setForm((f) => markReviewed(f, reviewKeys))} blockers={workloadBlockers} onNext={() => go('hardware')}
         acknowledged={acknowledged} onToggleConflict={(id) => setAcknowledged((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))}
@@ -163,7 +176,8 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
       {step === 'hardware' && <HardwarePage ctx={ctx} onSelect={selectHardware} onCustom={customHardware} onBack={() => go('workload')} onRun={() => void runPrediction()} busy={prediction.status === 'loading'} blockers={allBlockers} />}
       {step === 'results' && <ResultsPage mode={mode} setMode={setMode} prediction={prediction} analysisId={analysisId} labels={labels} compare={compare} onCompare={() => void runCompare()} onGoField={goField}
         onEdit={() => go('workload')} onRecs={() => go('recs')} body={body} onGoHardware={() => go('hardware')} />}
-      {step === 'recs' && <RecommendationsPage values={values} baseline={prediction.data ?? null} states={scen} onRun={(s) => void recalc(s)} onApply={applyScenario} onBack={() => go('results')} />}
+      {step === 'recs' && <RecommendationsPage analysisId={analysisId} body={body} values={values} labels={labels} baseline={prediction.data ?? null} original={originalPrediction}
+        states={scen} onRun={(s) => void recalc(s)} onApply={applyScenario} onApplyAdvice={applyAdvice} onBack={() => go('results')} />}
     </>}
   </main>;
 }
