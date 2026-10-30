@@ -426,6 +426,20 @@ class JobTests(BenchApiBase):
         self.assertIn('BENCH_IMAGE', r.json()['detail']['missing'])
         self.assertEqual(self.client_fake.requests, [])
 
+    def test_default_image_and_digest_warning(self):
+        from app.services.benchmarks.policy import DEFAULT_IMAGE
+        with mock.patch.dict(os.environ, {'BENCH_IMAGE': ''}):
+            self.assertEqual(load_policy().image, 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark:v1')
+        self.svc.policy = replace(self.policy, image=DEFAULT_IMAGE)
+        status = self.c.get('/api/bench/status').json()
+        self.assertEqual(status['image'], DEFAULT_IMAGE)
+        self.assertTrue(any('sha256' in w for w in status['image_warnings']))
+        pinned = 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:' + 'c' * 64
+        self.svc.policy = replace(self.policy, image=pinned)
+        self.assertEqual(self.c.get('/api/bench/status').json()['image_warnings'], [])
+        self.submit()
+        self.assertEqual(self.client_fake.requests[0].image, pinned)
+
     def test_unready_config_is_not_submitted(self):
         values = {**self.values, 'hardware.gpu_id': 'catalog:a100-80gb'}
         r = self.submit(values=values)

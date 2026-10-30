@@ -82,7 +82,7 @@ export type BenchRecord = { kind: 'benchmark'; source: string; result: BenchRunR
   full_run_projection: { optimizer_updates: number; hours: number; label: string } | null };
 export type BenchAllowance = { limit_usd: number; reserved_usd: number; used_estimated_usd: number; available_usd: number } | null;
 export type BenchStatus = { cloud_enabled: boolean; missing_configuration: string[]; provider: string; simulated: boolean; cancel_enabled: boolean; runner_max_seconds: number;
-  startup_grace_seconds: number; platform_timeout_hours: number; reservation_per_job_usd: number; active_jobs: number; global: BenchAllowance; session?: BenchAllowance; notes: string[] };
+  startup_grace_seconds: number; platform_timeout_hours: number; reservation_per_job_usd: number; active_jobs: number; image?: string | null; image_warnings?: string[]; global: BenchAllowance; session?: BenchAllowance; notes: string[] };
 export type BenchJob = { id: string; state: string; terminal: boolean; resumable: false; provider: string; simulated: boolean; platform: string; preset: string; provider_state: string | null;
   provider_message: string | null; created_at: number; elapsed_seconds: number | null; provider_run_seconds: number | null; deadline_at: number; reserved_usd: number;
   estimated_charge_usd: number | null; cost_label: string; error: { type: string; message: string } | null; results: BenchRunResult | null };

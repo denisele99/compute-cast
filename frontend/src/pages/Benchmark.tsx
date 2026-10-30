@@ -209,7 +209,9 @@ export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { anal
         {status?.simulated && <Alert kind="warn">This server uses a <strong>simulated provider</strong> for testing. No Nebius job runs and no real results are produced.</Alert>}
         {status && <ul className="list-disc pl-4 text-[11px] text-[#a7a0bb]"><li>Runner limit {status.runner_max_seconds} s plus up to {Math.round(status.startup_grace_seconds / 60)} min for provisioning and image pull; the backend cancels jobs past that. Platform timeout backstop: {status.platform_timeout_hours} h.</li>
           <li>Each job reserves {money(status.reservation_per_job_usd)} of your session allowance until it finishes. One GPU job runs at a time across all users ({status.active_jobs} active).</li>
+          {status.image && <li>Container image: <span className="font-mono break-all">{status.image}</span></li>}
           {status.notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+        {(status?.image_warnings ?? []).map((w) => <Alert key={w} kind="warn">{w}</Alert>)}
         {cloudReady && !token && <form className="flex flex-wrap items-end gap-2 border border-line p-2" onSubmit={(e) => { e.preventDefault(); void login(); }}>
           <label className="text-[11px]">Display name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={40} className="mt-0.5 block border border-line bg-black/40 px-2 py-1 text-xs" /></label>
           <label className="text-[11px]">Demo password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-0.5 block border border-line bg-black/40 px-2 py-1 text-xs" /></label>
