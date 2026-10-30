@@ -10,8 +10,9 @@ import re
 from dataclasses import dataclass, field
 
 # The project's benchmark runner image in Nebius Container Registry (eu-north1). Same-project registry
-# images need no pull credentials. Override with BENCH_IMAGE; prefer an @sha256:<digest> reference.
-DEFAULT_IMAGE = 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark:v1'
+# images need no pull credentials. Pinned by digest (the image pushed as benchmark:v1). Override with
+# BENCH_IMAGE, using an @sha256:<digest> reference, when you publish a new runner image.
+DEFAULT_IMAGE = 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9'
 DIGEST = re.compile(r'@sha256:[0-9a-f]{64}$')
 
 

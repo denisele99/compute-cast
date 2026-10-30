@@ -275,8 +275,8 @@ BENCH_CLOUD_ENABLED=1 BENCH_NEBIUS_BACKEND=fake BENCH_DEMO_PASSWORD=dev-pass BEN
    - Set `CORS_ALLOWED_ORIGINS=https://<user>.github.io`. This is the origin only, with no path.
    - Keep `BENCH_CLOUD_ENABLED=0` until the live checks below pass.
 
-4. The job image defaults to `cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark:v1` (Nebius Container
-   Registry, eu-north1). Same-project registry images need no pull credentials, so leave
+4. The job image defaults to `cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9`
+   (pushed as `benchmark:v1` in Nebius Container Registry, eu-north1). Same-project registry images need no pull credentials, so leave
    `NEBIUS_REGISTRY_SECRET_VERSION` empty. Run jobs in a project in the same region, and pin the image
    **by digest** with `BENCH_IMAGE` (the Nebius tab warns while it is a tag); see
    [benchmark/README.md](benchmark/README.md).

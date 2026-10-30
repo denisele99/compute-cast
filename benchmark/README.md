@@ -162,8 +162,8 @@ All of the steps below run from `benchmark/`.
    docker inspect --format '{{index .RepoDigests 0}}' cr.eu-north1.nebius.cloud/<registry-id>/compute-cast-bench:0.1.0
    ```
 
-   The project's image is `cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark:v1`, which is the backend
-   default when `BENCH_IMAGE` is unset. Pin it as
+   The project's image, pushed as `benchmark:v1`, is pinned as the backend default (used when
+   `BENCH_IMAGE` is unset): `cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9`. Pin it as
    `BENCH_IMAGE=cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:<digest>` on
    the backend. For full reproducibility, also pin the `FROM` line by digest; see the comment in
    the `Dockerfile`.

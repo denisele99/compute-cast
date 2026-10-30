@@ -429,11 +429,12 @@ class JobTests(BenchApiBase):
     def test_default_image_and_digest_warning(self):
         from app.services.benchmarks.policy import DEFAULT_IMAGE
         with mock.patch.dict(os.environ, {'BENCH_IMAGE': ''}):
-            self.assertEqual(load_policy().image, 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark:v1')
+            self.assertEqual(load_policy().image, 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:1de6db7c41473542e4e74997f3f068bb4b2d2f4c6a50f8c947f22386943becc9')
         self.svc.policy = replace(self.policy, image=DEFAULT_IMAGE)
         status = self.c.get('/api/bench/status').json()
-        self.assertEqual(status['image'], DEFAULT_IMAGE)
-        self.assertTrue(any('sha256' in w for w in status['image_warnings']))
+        self.assertEqual((status['image'], status['image_warnings']), (DEFAULT_IMAGE, []))
+        self.svc.policy = replace(self.policy, image='cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark:v1')
+        self.assertTrue(any('sha256' in w for w in self.c.get('/api/bench/status').json()['image_warnings']))
         pinned = 'cr.eu-north1.nebius.cloud/e00yyx5y6aa4dfp7m4/benchmark@sha256:' + 'c' * 64
         self.svc.policy = replace(self.policy, image=pinned)
         self.assertEqual(self.c.get('/api/bench/status').json()['image_warnings'], [])
