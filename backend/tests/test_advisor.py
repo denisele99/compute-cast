@@ -105,6 +105,38 @@ class AdvisorApiTests(unittest.TestCase):
         self.assertIn('Nemotron 3 Super', body['model'])
         self.assertTrue(body['original_summary'] and body['suggestions_summary'])
 
+    def test_strategies_get_approximate_projections(self):
+        def rec(id, category, strategy, changes=None):
+            return {**answer()['recommendations'][0], 'id': id, 'category': category, 'strategy': strategy,
+                    'parameter_changes': changes or {}, 'implementation_steps': ['Wrap blocks'], 'launch_snippet': 'torchrun --nproc_per_node 4 train.py'}
+        recs = [rec('ckpt', 'combined', {'activation_checkpointing': 'full'},
+                    {'training.microbatch_size': 32, 'training.gradient_accumulation_steps': 1}),
+                rec('zero', 'sharding', {'data_parallel': 4, 'sharding': 'zero3'},
+                    {'training.microbatch_size': 8, 'training.gradient_accumulation_steps': 1}),
+                rec('ddp-batch', 'data_parallel', {'data_parallel': 4}, {'training.microbatch_size': 8, 'training.gradient_accumulation_steps': 4}),
+                rec('tp-bad', 'tensor_parallel', {'tensor_parallel': 5}),
+                rec('pp', 'pipeline_parallel', {'pipeline_parallel': 2, 'data_parallel': 2}, {'training.microbatch_size': 8, 'training.gradient_accumulation_steps': 2}),
+                rec('too-many', 'data_parallel', {'data_parallel': 16})]
+        body = self.ask(FakeClient(answer(recommendations=recs)), max_gpus=8, preserve_effective_batch=True).json()
+        out = {r['id']: r for r in body['recommendations']}
+        base = AD.gpt2_predict.predict(self.values)
+        ckpt = out['ckpt']['projection']
+        self.assertTrue(ckpt['approximate'] and not out['ckpt']['estimable'])
+        self.assertEqual(ckpt['gpu_count'], 1)
+        self.assertGreater(ckpt['training_hours'], base['runtime']['total_training_compute']['seconds'] / 3600)  # recompute overhead
+        zero = out['zero']['projection']
+        self.assertLess(zero['memory_gib']['training_state'], base['memory']['training_state'] / 3)
+        self.assertLess(zero['training_hours'], base['runtime']['total_training_compute']['seconds'] / 3600 / 3)
+        self.assertEqual(zero['global_effective_batch'], 32)
+        self.assertTrue(any('global effective batch' in v for v in out['ddp-batch']['violations']))  # 8 x 4 x 4 != 32
+        self.assertIsNone(out['tp-bad']['projection'])
+        self.assertTrue(any('tensor parallel' in i for i in out['tp-bad']['issues']))
+        self.assertLess(out['pp']['projection']['efficiency'], 1)  # pipeline bubble
+        self.assertTrue(any('GPU limit of 8' in v for v in out['too-many']['violations']))
+        self.assertEqual(out['zero']['launch_snippet'], 'torchrun --nproc_per_node 4 train.py')
+        self.assertIn('Approximate projection', out['zero']['estimate_note'])
+        self.assertIn('strategy', json.dumps(AD.Advice.model_json_schema()))
+
     def test_effective_batch_constraint(self):
         bad = answer(recommendations=[{**answer()['recommendations'][0], 'parameter_changes': {'training.microbatch_size': 16}}])
         rec = self.ask(FakeClient(bad), preserve_effective_batch=True).json()['recommendations'][0]

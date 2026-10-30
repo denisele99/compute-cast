@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ChevronRight, Cpu, Gauge, Layers, Menu, RotateCcw, Sparkles, type LucideIcon } from 'lucide-react';
+import { ArrowRight, Cpu, Gauge, Layers, Menu, RotateCcw, Sparkles, type LucideIcon } from 'lucide-react';
 import { AdviceRec, CompareRow, ConfigBody, Extraction, HardwareOption, Json, Prediction, Schema, UploadResponse, UploadedFile, Validation, api } from './api';
 import { FormCtx } from './components/FieldGrid';
 import { Alert } from './components/ui';
@@ -10,7 +10,8 @@ import { Async, ResultsPage } from './pages/Results';
 import { WorkloadPage } from './pages/Workload';
 
 type Step = 'workload' | 'hardware' | 'results' | 'recs';
-const stepLabels: [Step, string, LucideIcon][] = [['workload', 'Workload', Layers], ['hardware', 'Hardware', Cpu], ['results', 'Results', Gauge], ['recs', 'Recommendations', Sparkles]];
+const stepLabels: [Step, string, LucideIcon, string][] = [['workload', 'Workload', Layers, 'Model, data and training settings'], ['hardware', 'Hardware', Cpu, 'The GPU you plan to train on'],
+  ['results', 'Results', Gauge, 'Estimate, then benchmark'], ['recs', 'Recommendations', Sparkles, 'Make it faster or cheaper']];
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const CATALOGUE_KEYS = ['hardware.gpu_name', 'hardware.catalog_gpu_id', 'hardware.vram_gib', 'hardware.usable_vram_gib', 'hardware.bf16_supported', 'hardware.bf16_dense_tflops',
   'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps', 'hardware.price_per_hour', 'hardware.price_unit', 'hardware.price_region', 'hardware.price_note'];
@@ -93,15 +94,13 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
     try {
       const r = await api.hardwareOption(o.id);
       setForm((f) => {
+        // Picking a GPU replaces every hardware value (including earlier edits): switch freely, then edit any field.
         let next = { ...f };
-        for (const k of CATALOGUE_KEYS) if (next[k]?.source === 'catalogue') delete next[k];
+        for (const k of CATALOGUE_KEYS) delete next[k];
         next = setManual(next, 'hardware.source', r.values['hardware.source'] as Json); next = setManual(next, 'hardware.gpu_id', o.id);
         // Usable VRAM is left to the 90% default so it follows edits to total VRAM until you change it yourself.
         const fill = Object.fromEntries(Object.entries(r.values).filter(([k, v]) => !['hardware.source', 'hardware.gpu_id', 'hardware.usable_vram_gib'].includes(k) && v !== null));
-        if (next['hardware.usable_vram_gib']?.source !== 'manual') delete next['hardware.usable_vram_gib'];
-        const applied = applyCatalogue(next, fill, o.label);
-        if (applied.conflicts.length) setKept((c) => [...new Set([...c, ...applied.conflicts])]);
-        return applied.form;
+        return applyCatalogue(next, fill, o.label).form;
       });
     } catch (e) { setSessionError(message(e)); }
   }
@@ -150,14 +149,22 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   const reached = (s: Step) => s === 'workload' || s === 'hardware' || prediction.status !== 'idle';
 
   return <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-semibold tracking-tight">Plan your training run</h1><p className="mt-1 text-xs text-[#a7a0bb]">MVP: standard GPT-2 · PyTorch · analytical estimates · uploads are parsed statically, never executed.</p></div>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div className="max-w-3xl"><h1 className="text-3xl font-semibold tracking-tight">Plan your training run</h1>
+      <p className="mt-2 text-sm leading-6 text-[#d8d3e3]">Find out whether a GPT-2 training job fits on a GPU, how long it will take and what it will cost, before you rent anything.
+        Describe your workload, pick a GPU, and get an instant estimate. Then confirm it with a real benchmark and get suggestions to make the run faster, cheaper or smaller.</p>
+      <p className="mt-1.5 text-[11px] text-[#8e899b]">MVP: standard GPT-2 · PyTorch · analytical estimates · uploads are parsed statically, never executed.</p></div>
       <button type="button" onClick={() => void reset()} className="flex items-center gap-1.5 border border-line px-2.5 py-1.5 text-xs"><RotateCcw size={12} /> New analysis (clears uploads)</button></div>
     {sessionError && <div className="mt-3"><Alert kind="error">{sessionError}</Alert></div>}
-    <nav aria-label="Steps" className="my-4"><ol className="flex flex-wrap items-center gap-1">{stepLabels.map(([id, label, Icon], i) => <li key={id} className="flex items-center gap-1">
-      {i > 0 && <ChevronRight size={14} className={reached(id) ? 'text-[#8e7cea]' : 'text-[#4a4658]'} aria-hidden />}
-      <button disabled={!reached(id)} aria-current={step === id ? 'step' : undefined} onClick={() => go(id)}
-        className={`flex items-center gap-1.5 border px-3 py-1.5 text-xs ${step === id ? 'border-violet bg-violet/15 text-white' : 'border-line text-[#a7a0bb] disabled:opacity-40'}`}><Icon size={13} aria-hidden />{label}</button></li>)}</ol></nav>
-    {!analysisId ? <p className="text-sm text-[#a7a0bb]">Starting analysis…</p> : <>
+    <nav aria-label="Steps" className="my-5"><ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">{stepLabels.map(([id, label, Icon, hint], i) => {
+      const at = stepLabels.findIndex(([s]) => s === step); const done = i < at;
+      return <li key={id}><button disabled={!reached(id)} aria-current={step === id ? 'step' : undefined} onClick={() => go(id)}
+        className={`group w-full border-t-2 pt-2 text-left transition disabled:opacity-40 ${step === id ? 'border-violet' : done ? 'border-[#5d4cb0]' : 'border-line'}`}>
+        <span className={`flex items-center gap-1.5 text-sm font-semibold ${step === id ? 'text-white' : 'text-[#c4bfcd] group-hover:text-white'}`}>
+          <span className={`grid h-6 w-6 place-items-center ${step === id ? 'bg-violet text-white' : done ? 'bg-[#2c2550] text-[#c9bcff]' : 'border border-line text-[#8e899b]'}`} aria-hidden><Icon size={13} /></span>
+          {label}</span>
+        <span className="mt-0.5 hidden text-[11px] text-[#8e899b] sm:block">{hint}</span></button></li>;
+    })}</ol></nav>
+    {!analysisId ? <p className="text-sm text-[#a7a0bb]">Starting analysis…</p> : <div key={step} className="step-enter">
       {step === 'workload' && <WorkloadPage ctx={ctx} reviewKeys={reviewKeys} onReviewAll={() => setForm((f) => markReviewed(f, reviewKeys))} blockers={workloadBlockers} onNext={() => go('hardware')}
         acknowledged={acknowledged} onToggleConflict={(id) => setAcknowledged((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))}
         handlers={{ busy: uploadBusy, error: uploadError, extraction, kept, skipped, onUpload, onRemove: (f) => void onRemove(f), onHf, onExample }} />}
@@ -165,7 +172,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
       {step === 'results' && <ResultsPage mode={mode} setMode={setMode} prediction={prediction} analysisId={analysisId} labels={labels} compare={compare} onCompare={() => void runCompare()} onGoField={goField}
         onEdit={() => go('workload')} onRecs={() => go('recs')} body={body} onGoHardware={() => go('hardware')} />}
       {step === 'recs' && <RecommendationsPage analysisId={analysisId} body={body} values={values} labels={labels} baseline={prediction.data ?? null} original={originalPrediction} onApplyAdvice={applyAdvice} onBack={() => go('results')} />}
-    </>}
+    </div>}
   </main>;
 }
 

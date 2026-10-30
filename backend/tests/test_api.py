@@ -207,6 +207,20 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(r['extraction']['dataset_samples'][0]['sample_rows'], 30)
         self.assertNotIn('data.num_training_examples', r['extraction']['fields'])
 
+    def test_original_is_the_first_successful_recorded_run(self):
+        _, values = self.load()
+        values.update(self.hardware())
+        blocked = self.predict({**values, 'training.microbatch_size': None})
+        self.assertEqual(blocked['status'], 'blocked')
+        self.assertFalse(blocked['snapshots']['is_original_run'])
+        what_if = self.predict({**values, 'training.microbatch_size': 4}, record=False)  # recommendation preview
+        self.assertFalse(what_if['snapshots']['is_original_run'])
+        first = self.predict(values)
+        self.assertTrue(first['snapshots']['is_original_run'])
+        later = self.predict({**values, 'training.microbatch_size': 16})
+        self.assertFalse(later['snapshots']['is_original_run'])
+        self.assertEqual(later['snapshots']['original']['values']['training.microbatch_size'], 8)
+
     def test_snapshot_changes_and_compare(self):
         _, values = self.load()
         values.update(self.hardware())

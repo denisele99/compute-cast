@@ -12,7 +12,7 @@ import math
 
 CONFIG_SCHEMA_VERSION = '1.0'
 RESULTS_SCHEMA_VERSION = '1.0'
-BENCHMARK_CODE_VERSION = '0.1.0'
+BENCHMARK_CODE_VERSION = '0.1.1'
 
 # Conservative MVP limits. The backend may tighten (never loosen) them via policy.
 LIMITS = {

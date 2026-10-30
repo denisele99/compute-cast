@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useState } from 'react';
 import { Code2, Download, FileCode2, Sparkles, Target, Upload, X } from 'lucide-react';
-import { Advice, AdvicePrefs, AdviceRec, AdviceStatus, ConfigBody, Prediction, Values, api } from '../api';
-import { Accordion, Alert, Badge, Delta, Section } from '../components/ui';
+import { Advice, AdvicePrefs, AdviceRec, AdviceStatus, AdviceStrategy, ConfigBody, Prediction, StrategyProjection, Values, api } from '../api';
+import { Accordion, Alert, Badge, CopyBlock, Delta, Section } from '../components/ui';
 import { gib, hours, money, moneyDelta } from './Results';
 
 type Recalc = { status: 'loading' | 'done' | 'error'; result?: Prediction; error?: string };
@@ -26,19 +26,49 @@ function Metrics({ p, base }: { p: Prediction; base?: Prediction | null }): JSX.
   </dl>;
 }
 
+const SHARDING: Record<AdviceStrategy['sharding'], string> = { none: '', zero1: 'ZeRO-1 (optimizer state sharded)', zero2: 'ZeRO-2 (optimizer + gradients sharded)',
+  zero3: 'ZeRO-3 (fully sharded)', fsdp: 'FSDP (fully sharded)' };
+function strategyParts(s: AdviceStrategy): string[] {
+  return [s.gpu_count > 1 ? `${s.gpu_count} GPUs` : '1 GPU', s.data_parallel > 1 ? `data parallel ×${s.data_parallel}` : '', s.tensor_parallel > 1 ? `tensor parallel ×${s.tensor_parallel}` : '',
+    s.pipeline_parallel > 1 ? `pipeline ×${s.pipeline_parallel} stages` : '', SHARDING[s.sharding],
+    s.activation_checkpointing !== 'none' ? `${s.activation_checkpointing} activation checkpointing` : '', s.attention === 'flash' ? 'flash attention' : ''].filter(Boolean);
+}
+
+/** Rough numbers for a multi-technique plan, next to the current single-GPU estimate. */
+function Projection({ p, base }: { p: StrategyProjection; base: Prediction | null }): JSX.Element {
+  const b = base?.status === 'ok' ? base : null; const bt = b?.runtime?.total_training_compute;
+  return <div className="mt-2 border border-[#5d4cb0] bg-violet/5 p-2">
+    <p className="eyebrow mb-1 flex items-center gap-1.5">Approximate projection <Badge kind="warn">rule of thumb</Badge></p>
+    <dl className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+      <div><dt className="eyebrow">Memory / GPU</dt><dd><strong>{gib(p.per_gpu_capacity_gib)}</strong><Delta now={p.per_gpu_capacity_gib} before={b?.fit.capacity_gib} format={gib} />
+        <span className="block text-[10px]">{p.fits ? 'fits' : 'exceeds'} {gib(p.usable_vram_gib)} usable</span></dd></div>
+      <div><dt className="eyebrow">Training time</dt><dd><strong>{hours(p.training_hours)}</strong><Delta now={p.training_hours} before={bt ? bt.seconds / 3600 : null} format={hours} /></dd></div>
+      <div><dt className="eyebrow">Cost</dt><dd><strong>{money(p.cost_usd)}</strong><Delta now={p.cost_usd} before={b?.cost.cost} format={moneyDelta} />
+        <span className="block text-[10px]">{p.gpu_count} GPU{p.gpu_count > 1 ? 's' : ''}</span></dd></div>
+      <div><dt className="eyebrow">Global batch</dt><dd><strong>{p.global_effective_batch}</strong><span className="block text-[10px]">scaling efficiency {(p.efficiency * 100).toFixed(0)}%</span></dd></div></dl>
+    <details className="mt-1 text-[10px] text-[#8e899b]"><summary className="cursor-pointer">How this was projected</summary>
+      <ul className="mt-1 list-disc pl-4">{p.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
+      <p className="mt-1">Per GPU: {Object.entries(p.memory_gib).map(([k, v]) => `${k.replace(/_/g, ' ')} ${gib(v)}`).join(' · ')}</p></details>
+  </div>;
+}
+
 function RecCard({ r, labels, values, baseline, recalc, onRecalc, onApply, applied }: { r: AdviceRec; labels: Record<string, string>; values: Values; baseline: Prediction | null;
   recalc?: Recalc; onRecalc: () => void; onApply: () => void; applied: boolean }): JSX.Element {
   const changes = Object.entries(r.new_values).filter(([k]) => k in labels && (k.startsWith('training.') || k.startsWith('data.') || k === 'hardware.gpu_name'));
   return <article className={`border p-4 ${r.estimable ? 'border-line' : 'border-dashed border-line'}`}>
     <div className="flex flex-wrap items-center gap-1.5"><Badge kind="muted">{r.category.replace(/_/g, ' ')}</Badge>
-      {r.estimable ? <Badge kind="good">estimated</Badge> : <Badge kind="warn">not estimated</Badge>}{applied && <Badge kind="good">applied</Badge>}</div>
+      {r.estimable ? <Badge kind="good">estimated</Badge> : r.projection ? <Badge kind="warn">approximate</Badge> : <Badge kind="warn">not estimated</Badge>}{applied && <Badge kind="good">applied</Badge>}</div>
     <h3 className="mt-2 text-sm font-semibold">{r.title}</h3>
     <p className="mt-1 text-xs text-[#c4bfcd]">{r.explanation}</p>
     {r.expected_effect && <p className="mt-1 text-xs"><span className="text-[#8e899b]">Expected effect:</span> {r.expected_effect}</p>}
     {changes.length > 0 && <ul className="mt-2 space-y-0.5 text-xs">{changes.map(([k, v]) => <li key={k}><span className="text-[#8e899b]">{labels[k]}:</span> <strong>{String(values[k] ?? '—')}</strong> → <strong>{String(v)}</strong></li>)}</ul>}
+    {r.strategy && <div className="mt-2 flex flex-wrap gap-1">{strategyParts(r.strategy).map((x) => <Badge key={x} kind="muted">{x}</Badge>)}</div>}
+    {r.projection && <Projection p={r.projection} base={baseline} />}
+    {(r.implementation_steps?.length ?? 0) > 0 && <ol className="mt-2 list-decimal space-y-0.5 pl-4 text-xs text-[#d8d3e3]">{r.implementation_steps?.map((x) => <li key={x}>{x}</li>)}</ol>}
+    {r.launch_snippet && <div className="mt-2"><CopyBlock text={r.launch_snippet} label={`${r.title} launch snippet`} /></div>}
     {r.hardware && <p className="mt-1 text-xs"><span className="text-[#8e899b]">Switch hardware to</span> <strong>{r.hardware.label}{r.hardware.region ? ` · ${r.hardware.region}` : ''}</strong>{r.hardware.cost_usd != null ? ` (estimated ${money(r.hardware.cost_usd)})` : ''}</p>}
     {r.tradeoffs.length > 0 && <p className="mt-1 text-[11px] text-[#a7a0bb]">Trade-offs: {r.tradeoffs.join('; ')}</p>}
-    {r.estimate_note && <p className="mt-1 text-[11px] text-[#e6d28a]">{r.estimate_note}</p>}
+    {r.estimate_note && !r.projection && <p className="mt-1 text-[11px] text-[#e6d28a]">{r.estimate_note}</p>}
     {[...r.violations.map((v) => `Conflicts with your constraints: ${v}.`), ...r.issues].map((m) => <p key={m} className="mt-1 text-[11px] text-[#ff9aa8]">{m}</p>)}
     {recalc?.status === 'loading' && <p className="mt-2 text-xs" aria-live="polite">Recalculating…</p>}
     {recalc?.status === 'error' && <p role="alert" className="mt-2 text-xs text-[#ffb3be]">{recalc.error}</p>}
@@ -98,6 +128,7 @@ export function RecommendationsPage({ analysisId, body, values, labels, baseline
           <div className="mt-2 grid grid-cols-2 gap-2">
             <label className="text-[11px]">Budget for the run (USD, optional)<input type="number" min={0} step="any" value={prefs.budget_usd ?? ''} onChange={(e) => set('budget_usd', e.target.value === '' ? null : Number(e.target.value))} className="field-sm mt-0.5" placeholder="no limit" /></label>
             <label className="text-[11px]">GPU limit (optional)<input type="number" min={1} step={1} value={prefs.max_gpus ?? ''} onChange={(e) => set('max_gpus', e.target.value === '' ? null : Number(e.target.value))} className="field-sm mt-0.5" placeholder="1" /></label></div>
+          <p className="mt-1.5 text-[10px] text-[#8e899b]">Allow 2+ GPUs to get data, tensor and pipeline parallel or ZeRO/FSDP plans. Checkpointing, flash attention and batch/accumulation tuning work on one GPU.</p>
 </fieldset>
         <fieldset className="border border-line p-3"><legend className="px-1 text-xs font-semibold">What must stay the same?</legend>
           {KEEP.map(([k, label]) => <label key={k} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={prefs[k] as boolean} onChange={(e) => set(k, e.target.checked as never)} /> Keep {label}</label>)}

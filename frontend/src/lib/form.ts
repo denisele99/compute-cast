@@ -94,15 +94,12 @@ export function visible(key: string, v: Values): boolean {
 }
 
 const EXTRACTED: Source[] = ['upload', 'static_extraction', 'huggingface'];
-const CATALOGUE_LOCKED = ['hardware.bf16_supported', 'hardware.bf16_dense_tflops', 'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps'];
 
-/** Why a field is read-only, or null when editable (contract editable=false / custom_only; catalogue specs). */
+/** Why a field is read-only, or null when editable (contract editable=false / custom_only). Hardware values are always editable. */
 export function lockReason(key: string, editable: boolean | 'custom_only', form: FormState, v: Values): string | null {
   const f = form[key];
   if (editable === 'custom_only' && f && EXTRACTED.includes(f.source) && !v['model.custom_config'])
     return 'From the selected checkpoint. Turn on "Hypothetical custom configuration" to change it.';
   if (editable === false) return 'Fixed in v1.';
-  if (CATALOGUE_LOCKED.includes(key) && f?.source === 'catalogue' && v['hardware.source'] !== 'custom')
-    return 'From the hardware catalogue. Choose "Custom GPU" to enter your own values.';
   return null;
 }

@@ -1,7 +1,7 @@
 import { ChangeEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { BenchBody, BenchJob, BenchRecord, BenchReview, BenchStatus, ConfigBody, Json, Provenance, api } from '../api';
 import { ChevronDown, ClipboardList, Cloud, Laptop, Scale } from 'lucide-react';
-import { Accordion, Alert, Badge, CopyBlock, IconTip, Section, Unavailable } from '../components/ui';
+import { Accordion, Alert, Badge, CopyBlock, IconTip, ModeToggle, Section, Unavailable } from '../components/ui';
 import { gib, money } from './Results';
 
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -96,7 +96,7 @@ function JobCard({ job, now, canCancel, onCancel }: { job: BenchJob; now: number
 }
 
 export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { analysisId: string; body: () => ConfigBody; ready: boolean; onGoHardware: () => void }): JSX.Element {
-  const [target, setTarget] = useState<'local' | 'nebius'>('local'); const [reviewOpen, setReviewOpen] = useState(false);
+  const [target, setTarget] = useState<'local' | 'nebius'>('nebius'); const [reviewOpen, setReviewOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, Json>>({});
   const [review, setReview] = useState<BenchReview | null>(null); const [reviewError, setReviewError] = useState('');
   const [records, setRecords] = useState<BenchRecord[]>([]); const [importBusy, setImportBusy] = useState(false); const [importError, setImportError] = useState('');
@@ -167,8 +167,10 @@ export function BenchmarkPanel({ analysisId, body, ready, onGoHardware }: { anal
   return <div className="space-y-4">
     <p className="text-xs text-[#a7a0bb]">Measures real speed and memory on one GPU with synthetic data. Your files are never executed.</p>
     {!ready && <Alert kind="warn">Complete the workload (a successful estimate) first; the benchmark uses the same configuration.</Alert>}
-    <div className="flex gap-1" role="tablist" aria-label="Benchmark target">{([['local', 'Your GPU (download)'], ['nebius', 'Nebius AI Cloud']] as const).map(([t, l]) =>
-      <button key={t} role="tab" aria-selected={target === t} onClick={() => setTarget(t)} className={`border px-3 py-1 text-xs ${target === t ? 'border-violet bg-violet/15' : 'border-line text-[#a7a0bb]'}`}>{l}</button>)}</div>
+    <div><p className="eyebrow mb-2">Where should the benchmark run?</p>
+      <ModeToggle label="Benchmark target" value={target} onChange={setTarget} options={[
+        { id: 'nebius', title: 'Nebius AI Cloud', description: 'We start a 1-GPU job for you and collect the results.', icon: Cloud },
+        { id: 'local', title: 'Your GPU', description: 'Download a package, run it yourself, import results.json.', icon: Laptop }]} /></div>
     {reviewError && <Alert kind="error">{reviewError}</Alert>}
 
     {review && <Section icon={ClipboardList} title="Review benchmark setup" hint="Your workload inputs, plus defaults and assumptions where you gave none."
