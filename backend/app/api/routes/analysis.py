@@ -154,6 +154,15 @@ def examples():
     return {'examples': [{'id': k, 'label': v['label'], 'files': v['files']} for k, v in X.EXAMPLE_SETS.items()]}
 
 
+@router.get("/examples/{example_id}/files/{name}")
+def preview_example(example_id: str, name: str):
+    """Read-only text preview of one bundled example file (allowlisted names only)."""
+    example = X.EXAMPLE_SETS.get(example_id)
+    if example is None or name not in example['files']:
+        raise HTTPException(404, 'Unknown example file.')
+    return {'name': name, 'content': (X.EXAMPLES / name).read_text(encoding='utf-8')[:100_000]}
+
+
 @router.post("/{analysis_id}/examples/{example_id}")
 async def load_example(request: Request, analysis_id: str, example_id: str):
     item = get_analysis(request, analysis_id)

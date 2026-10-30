@@ -14,6 +14,14 @@ def search(q: str = Query('', max_length=100), limit: int = Query(10, ge=1, le=1
     return lookup.search(q, limit, offset)
 
 
+@router.get("/options")
+def all_options():
+    """Every pre-loaded GPU (Nebius platforms/regions and general catalogue), for the dropdown list."""
+    rows = sorted(lookup.options(), key=lambda r: (r['provider'] != 'nebius', r['label'], r['id']))
+    return {'items': [{k: r[k] for k in ('id', 'provider', 'platform', 'label', 'vram_gib', 'price', 'issues')} | {'has_specs': bool(r['specs'])}
+                      for r in rows], 'price_snapshot': lookup.prices()[1]}
+
+
 @router.get("/options/{option_id}")
 def option(option_id: str):
     """Autofill values (GPT-2 MVP keys) for one result. Specs come from the general catalogue,

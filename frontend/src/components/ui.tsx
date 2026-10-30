@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useId, useRef, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, Copy, Info, Lock } from 'lucide-react';
+import { AlertCircle, ArrowDown, ArrowUp, Check, ChevronDown, Copy, Info, Lock, type LucideIcon } from 'lucide-react';
 import type { FieldSpec, Json } from '../api';
 import { FieldState, SOURCE_LABEL } from '../lib/form';
 
@@ -8,9 +8,22 @@ export function Badge({ kind, children }: { kind: 'good' | 'warn' | 'bad' | 'mut
   return <span className={`inline-flex items-center gap-1.5 border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${tone}`}>{children}</span>;
 }
 
-export function Section({ number, title, hint, children, id, actions }: { number: string; title: string; hint?: ReactNode; children: ReactNode; id?: string; actions?: ReactNode }): JSX.Element {
-  return <section id={id} className="panel p-4 sm:p-5"><div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><div className="flex items-baseline gap-3"><span className="eyebrow text-[#8e7cea]">{number}</span>
-    <h2 className="text-base font-semibold">{title}</h2>{hint && <span className="text-xs text-[#a7a0bb]">{hint}</span>}</div>{actions}</div>{children}</section>;
+/** Panel with an icon, a title and a one-line plain-language description of what the section is for. */
+export function Section({ number, icon: Icon, title, hint, children, id, actions }: { number?: string; icon?: LucideIcon; title: string; hint?: ReactNode; children: ReactNode; id?: string; actions?: ReactNode }): JSX.Element {
+  return <section id={id} className="panel p-4 sm:p-5"><div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div className="flex items-start gap-2.5">
+    {Icon ? <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center border border-line text-[#8e7cea]" aria-hidden><Icon size={15} /></span> : number && <span className="eyebrow mt-1 text-[#8e7cea]">{number}</span>}
+    <div><h2 className="text-base font-semibold">{title}</h2>{hint && <p className="mt-0.5 text-xs text-[#a7a0bb]">{hint}</p>}</div></div>{actions}</div>{children}</section>;
+}
+
+/** Signed change vs the original run: arrow shows the direction; green = better, red = worse for that metric. */
+export function Delta({ now, before, lowerIsBetter = true, format }: { now: number | null | undefined; before: number | null | undefined; lowerIsBetter?: boolean; format: (n: number) => string }): JSX.Element | null {
+  if (now === null || now === undefined || before === null || before === undefined || !Number.isFinite(now) || !Number.isFinite(before)) return null;
+  const d = now - before;
+  if (Math.abs(d) < 1e-9 * Math.max(1, Math.abs(before))) return <span className="ml-1.5 text-[11px] text-[#8e899b]">no change</span>;
+  const better = lowerIsBetter ? d < 0 : d > 0; const Arrow = d > 0 ? ArrowUp : ArrowDown;
+  const pct = before !== 0 ? ` (${d > 0 ? '+' : ''}${((d / Math.abs(before)) * 100).toFixed(0)}%)` : '';
+  return <span className={`ml-1.5 inline-flex items-center gap-0.5 text-[11px] font-semibold ${better ? 'text-[#7ee0b0]' : 'text-[#ff9aa8]'}`} title="Change from the original estimate">
+    <Arrow size={11} aria-hidden />{d > 0 ? '+' : '−'}{format(Math.abs(d))}{pct}<span className="sr-only"> vs original</span></span>;
 }
 
 export function Accordion({ title, hint, children, defaultOpen = false }: { title: string; hint?: string; children: ReactNode; defaultOpen?: boolean }): JSX.Element {

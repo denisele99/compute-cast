@@ -417,6 +417,20 @@ def expand_zip(data, max_member_bytes):
 def merge(results):
     """One field map, de-duplicated conflicts, model sources and notes for the whole analysis."""
     usable = [r for r in results if 'findings' in r]
+    hf = next((r for r in usable if r['kind'] == 'huggingface_config'), None)
+    if hf is not None:
+        # A Hugging Face model plus your own training script: the checkpoint defines the model, so
+        # model settings found in scripts are ignored. Uploaded model *config files* stay a second
+        # source and are reported (one model source only).
+        trimmed = []
+        for r in usable:
+            dropped = [f for f in r['findings'] if r['kind'] == 'python_script' and f['field'].startswith('model.')]
+            if dropped:
+                r = {**r, 'findings': [f for f in r['findings'] if f not in dropped],
+                     'notes': r['notes'] + [f"{r['file']}: model settings ignored; the Hugging Face model "
+                                            f"{hf.get('model_id')} defines the model."]}
+            trimmed.append(r)
+        usable = trimmed
     fields = merge_findings(usable)
     conflicts, seen = [], set()
     for r in usable:

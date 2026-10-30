@@ -21,6 +21,7 @@ Status: **active** = used by the GPT-2 MVP; **legacy** = retained, marked "NOT U
 | app/services/benchmarks/ | active | Benchmark mode: config builder, local package, results validation, auth, durable store, Nebius jobs (see ../BENCHMARK.md) |
 | ../benchmark/ | active | Trusted runner, model registry and GPT-2 decoder shared by the local package and the container image |
 | app/clients/huggingface.py | active | config.json fetch (metadata only) |
+| app/services/advisor.py, app/api/routes/advisor.py | active | Recommendations via Nemotron 3 Super: request building, server-side checks, apply/export |
 | app/clients/nebius.py | placeholder | Future Token Factory adapter (not used for benchmarks) |
 | app/parsers/normalize_inputs.py, collect_workload.py | legacy | MLP / classic-transformer schema and collector |
 | app/services/estimators/gpu_memory.py, gpu_runtime.py, profiles.py, estimator.py | legacy | MLP / classic-transformer estimators |
@@ -31,6 +32,7 @@ Main endpoints (all under /api): `GET /health`, `GET /schema`, `GET /hf/search`,
 `POST /analysis/{id}/validate`, `POST /analysis/{id}/predict`, `POST /analysis/{id}/compare`,
 `GET /analysis/{id}/files/estimator_input.json`, `POST /analysis/{id}/examples/{example_id}`, `POST /analysis/{id}/benchmark/{config|package|results}`,
 `GET /bench/status`, `POST|GET /bench/session`, `POST|GET /bench/jobs`, `GET /bench/jobs/{id}`, `POST /bench/jobs/{id}/cancel`.
+`POST /analysis/{id}/advice`, `POST /analysis/{id}/advice/apply`, `GET /analysis/{id}/advice/export`, `GET /recommendations/status|examples` (Nemotron 3 Super; needs `NEBIUS_API_KEY`), `GET /hardware/options`, `GET /analysis/examples/{id}/files/{name}`.
 Cloud benchmark routes are off unless `BENCH_CLOUD_ENABLED=1`; settings in `.env.example`, deployment in ../BENCHMARK.md.
 
 Upload cache: `$UPLOAD_CACHE_DIR` or `<system temp>/compute_cast_uploads/<analysis_id>/` (outside the repo, not served).

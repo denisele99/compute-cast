@@ -197,9 +197,12 @@ class PricingAndCatalogTests(unittest.TestCase):
         self.assertEqual(h100['price']['unit'], 'gpu_hour')
         self.assertTrue(h100['price']['preemptible'])
         self.assertEqual(h100['specs']['catalog_gpu_id'], 'nvidia_h100_sxm_80gb')
+        # B200 is priced but absent from nebius_platforms.json: memory comes from the general catalogue,
+        # peak specs stay empty (memory-only catalogue entry).
         b200 = search('b200')['items'][0]
-        self.assertIsNone(b200['vram_gib'])
-        self.assertTrue(any('missing from nebius_platforms' in i for i in b200['issues']))
+        self.assertEqual(b200['vram_gib'], 180)
+        self.assertIn('hardware_catalog.json', b200['vram_source'])
+        self.assertTrue(any('GPU memory only' in i for i in b200['issues']))
 
     def test_gpu_count_applied_once(self):
         gpu = pricing.estimate_cost(2.0, {'price_per_hour': 1.0, 'unit': 'gpu_hour', 'gpus_allocated': 8, 'gpus_used': 8})
