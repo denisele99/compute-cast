@@ -38,10 +38,13 @@ def main():
     if p.credentials_file:
         print(f'  using NEBIUS_CREDENTIALS_FILE ({p.credentials_file})')
         if not Path(p.credentials_file).is_file():
-            print('  FAIL  credentials file not found at that path')
+            print('  FAIL  credentials file not found at that path (use the full path, e.g. /home/you/.nebius/credentials.json)')
             return 1
     elif p.service_account_id:
         print(f'  using authorized key for {p.service_account_id}')
+        if p.private_key_file and not Path(p.private_key_file).is_file():
+            print(f'  FAIL  private key not found at {p.private_key_file} (use the full path to private.pem)')
+            return 1
     if missing:
         print('  missing settings: ' + ', '.join(missing))
     if not p.project_id or not (p.credentials_file or (p.service_account_id and p.public_key_id and p.private_key_file)):

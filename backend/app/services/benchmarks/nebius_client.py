@@ -134,12 +134,12 @@ class NebiusSDKClient:
         from nebius.sdk import SDK
         if self._sdk is None:
             p = self.policy
-            if p.service_account_id and p.public_key_id and p.private_key_file:
-                self._sdk = SDK(service_account_id=p.service_account_id, service_account_public_key_id=p.public_key_id,
-                                service_account_private_key_file_name=p.private_key_file, parent_id=p.project_id,
+            if p.credentials_file:  # one-file credentials take priority when set
+                self._sdk = SDK(credentials_file_name=p.credentials_file, parent_id=p.project_id,
                                 user_agent_prefix='compute-cast-benchmark/0.1')
             else:
-                self._sdk = SDK(credentials_file_name=p.credentials_file, parent_id=p.project_id,
+                self._sdk = SDK(service_account_id=p.service_account_id, service_account_public_key_id=p.public_key_id,
+                                service_account_private_key_file_name=p.private_key_file, parent_id=p.project_id,
                                 user_agent_prefix='compute-cast-benchmark/0.1')
         return JobServiceClient(self._sdk)
 

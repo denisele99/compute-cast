@@ -103,8 +103,16 @@ def parse_platforms(text):
     return out
 
 
+def _env(name, default=None):
+    """Environment value, treating empty strings and template placeholders such as '<id>' as unset."""
+    value = os.environ.get(name, default)
+    if value is None or not value.strip() or ('<' in value and '>' in value):
+        return default if default is not None and not ('<' in default) else None
+    return value.strip()
+
+
 def load_policy() -> Policy:
-    env = os.environ.get
+    env = _env
     return Policy(
         cloud_enabled=_b('BENCH_CLOUD_ENABLED'), backend=env('BENCH_NEBIUS_BACKEND', 'sdk'),
         demo_password=env('BENCH_DEMO_PASSWORD') or None, session_secret=env('BENCH_SESSION_SECRET') or None,
