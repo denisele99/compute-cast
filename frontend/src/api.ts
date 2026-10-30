@@ -88,8 +88,8 @@ export type BenchJob = { id: string; state: string; terminal: boolean; resumable
   estimated_charge_usd: number | null; cost_label: string; error: { type: string; message: string } | null; results: BenchRunResult | null };
 export type BenchSession = { token: string; expires_at: number; display_name: string; note: string };
 
-export type OptionSummary = { id: string; provider: 'nebius' | 'catalog'; platform: string | null; label: string; vram_gib: number | null; price: Price | null; issues: string[]; has_specs: boolean };
-export type AdvicePrefs = { goal: 'shortest_time' | 'lowest_cost' | 'fit_memory' | 'highest_throughput' | 'balanced'; resources: 'current' | 'alternatives';
+export type OptionSummary = { id: string; provider: 'nebius' | 'catalog'; platform: string | null; label: string; vram_gib: number | null; price: Price | null };
+export type AdvicePrefs = { goal: 'shortest_time' | 'lowest_cost' | 'reduce_memory' | 'highest_throughput' | 'balanced'; resources: 'current' | 'alternatives';
   preserve_effective_batch: boolean; preserve_precision: boolean; preserve_sequence_length: boolean; preserve_training_method: boolean;
   budget_usd: number | null; max_gpus: number | null; notes: string };
 export type AdviceRec = { id: string; title: string; category: string; explanation: string; parameter_changes: Record<string, number>; hardware_option_id: string | null;
@@ -155,7 +155,7 @@ export const api = {
   benchJob: (token: string, jobId: string) => request<BenchJob>(`/api/bench/jobs/${encodeURIComponent(jobId)}`, { headers: auth(token) }),
   benchJobs: (token: string) => request<{ jobs: BenchJob[] }>('/api/bench/jobs', { headers: auth(token) }),
   benchCancel: (token: string, jobId: string) => post<BenchJob>(`/api/bench/jobs/${encodeURIComponent(jobId)}/cancel`, {}, token),
-  hardwareAll: () => request<{ items: OptionSummary[]; price_snapshot: string | null }>('/api/hardware/options'),
+  hardwareAll: () => request<{ nebius: OptionSummary[]; catalog: OptionSummary[]; price_snapshot: string | null }>('/api/hardware/options'),
   previewExample: (exampleId: string, name: string) => request<{ name: string; content: string }>(`/api/analysis/examples/${encodeURIComponent(exampleId)}/files/${encodeURIComponent(name)}`),
   adviceStatus: () => request<AdviceStatus>('/api/recommendations/status'),
   adviceExamples: () => request<{ files: Record<string, string> }>('/api/recommendations/examples'),

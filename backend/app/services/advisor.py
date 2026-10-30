@@ -25,7 +25,7 @@ from .estimators import gpt2_predict
 from .recommender import DEFAULT_MODEL, FileChange, safe_path, validate_review
 
 MODEL_LABEL = 'NVIDIA Nemotron 3 Super (nvidia/nemotron-3-super-120b-a12b) via Nebius Token Factory'
-GOALS = {'shortest_time': 'shortest training time', 'lowest_cost': 'lowest cost', 'fit_memory': 'fit into GPU memory',
+GOALS = {'shortest_time': 'shortest training time', 'lowest_cost': 'lowest cost', 'reduce_memory': 'reduce GPU memory use (fit into GPU memory with headroom)',
          'highest_throughput': 'highest throughput (tokens per second)', 'balanced': 'balanced'}
 # Parameters a recommendation may change and the estimator can re-calculate (single GPU).
 ESTIMABLE_KEYS = ('training.microbatch_size', 'training.gradient_accumulation_steps', 'data.sequence_length',

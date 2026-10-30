@@ -88,13 +88,13 @@ export function visible(key: string, v: Values): boolean {
   switch (key) {
     case 'training.num_epochs': case 'data.num_training_examples': return mode === 'epochs';
     case 'training.optimizer_updates': return mode === 'optimizer_updates';
-    case 'hardware.source': case 'hardware.gpu_id': case 'hardware.catalog_gpu_id': case 'model.model_type': return false;
+    case 'hardware.source': case 'hardware.gpu_id': case 'hardware.catalog_gpu_id': case 'hardware.price_region': case 'hardware.price_note': case 'model.model_type': return false;
     default: return true;
   }
 }
 
 const EXTRACTED: Source[] = ['upload', 'static_extraction', 'huggingface'];
-const CATALOGUE_LOCKED = ['hardware.vram_gib', 'hardware.bf16_supported', 'hardware.bf16_dense_tflops', 'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps'];
+const CATALOGUE_LOCKED = ['hardware.bf16_supported', 'hardware.bf16_dense_tflops', 'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps'];
 
 /** Why a field is read-only, or null when editable (contract editable=false / custom_only; catalogue specs). */
 export function lockReason(key: string, editable: boolean | 'custom_only', form: FormState, v: Values): string | null {

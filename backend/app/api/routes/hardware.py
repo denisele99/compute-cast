@@ -16,10 +16,10 @@ def search(q: str = Query('', max_length=100), limit: int = Query(10, ge=1, le=1
 
 @router.get("/options")
 def all_options():
-    """Every pre-loaded GPU (Nebius platforms/regions and general catalogue), for the dropdown list."""
-    rows = sorted(lookup.options(), key=lambda r: (r['provider'] != 'nebius', r['label'], r['id']))
-    return {'items': [{k: r[k] for k in ('id', 'provider', 'platform', 'label', 'vram_gib', 'price', 'issues')} | {'has_specs': bool(r['specs'])}
-                      for r in rows], 'price_snapshot': lookup.prices()[1]}
+    """GPU dropdown groups: Nebius AI Cloud (with catalogue specs) and catalogue-only GPUs, runtime-complete only."""
+    keep = ('id', 'provider', 'platform', 'label', 'vram_gib', 'price')
+    groups = lookup.choices()
+    return {group: [{k: r[k] for k in keep} for r in rows] for group, rows in groups.items()} | {'price_snapshot': lookup.prices()[1]}
 
 
 @router.get("/options/{option_id}")

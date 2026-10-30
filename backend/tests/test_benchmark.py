@@ -489,6 +489,16 @@ class JobTests(BenchApiBase):
             self.assertEqual((done['state'], done['error']['type']), (state, kind))
             self.assertIn(code, done['provider_message'] or '')
 
+    def test_template_placeholders_count_as_unset(self):
+        env = {'NEBIUS_SERVICE_ACCOUNT_ID': 'serviceaccount-<id>', 'NEBIUS_PUBLIC_KEY_ID': 'publickey-<id>',
+               'NEBIUS_PRIVATE_KEY_FILE': '/etc/secrets/nebius-private.pem', 'NEBIUS_CREDENTIALS_FILE': '/home/me/credentials.json',
+               'NEBIUS_PROJECT_ID': 'project-<id>', 'BENCH_NEBIUS_BACKEND': ''}
+        with mock.patch.dict(os.environ, env):
+            p = load_policy()
+        self.assertIsNone(p.service_account_id)
+        self.assertIsNone(p.project_id)
+        self.assertEqual((p.credentials_file, p.backend), ('/home/me/credentials.json', 'sdk'))
+
     def test_sdk_backend_needs_service_account_credentials(self):
         self.svc.policy = replace(self.policy, backend='sdk', credentials_file=None)
         missing = self.c.get('/api/bench/status').json()['missing_configuration']

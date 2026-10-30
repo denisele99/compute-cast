@@ -18,6 +18,7 @@ from ..services.estimators.estimate_gpt2 import DEFAULT_POLICY
 
 CONTRACT = Path(__file__).resolve().parents[2] / 'data' / 'mvp_feature_contract.json'
 SECTIONS = ('model', 'training', 'data', 'hardware')
+USABLE_FRACTION = 0.9  # default usable VRAM limit as a share of total VRAM
 
 
 def F(key, label, kind, section, *, editable=True, contract=None, unit=None, help=None, default=None,
@@ -68,7 +69,7 @@ FIELDS = [
     F('hardware.catalog_gpu_id', 'Spec catalogue id', 'text', 'hardware', advanced=True),
     F('hardware.vram_gib', 'VRAM per GPU', 'float', 'hardware', unit='GiB', minimum=0),
     F('hardware.usable_vram_gib', 'Usable VRAM limit', 'float', 'hardware', unit='GiB', minimum=0,
-      help='Defaults to 100% of VRAM: the estimate already adds a runtime baseline and margin.'),
+      help='How much of the VRAM training may use. Defaults to 90% of VRAM.'),
     F('hardware.bf16_supported', 'Native BF16 support', 'bool', 'hardware', advanced=True,
       help='Optional. Filled from the GPU catalogue; needed only for the runtime estimate.'),
     F('hardware.bf16_dense_tflops', 'Peak BF16 dense', 'float', 'hardware', unit='TFLOPS', minimum=0, advanced=True,
@@ -162,6 +163,8 @@ def validate(values, provenance=None, extraction=None, acknowledged=None):
         v[key] = value
     if v['model.model_type'] is None:
         v['model.model_type'] = 'gpt2'
+    if v['hardware.usable_vram_gib'] is None and v['hardware.vram_gib']:
+        v['hardware.usable_vram_gib'] = round(USABLE_FRACTION * v['hardware.vram_gib'], 2)
     mode = v['training.duration_mode'] or 'epochs'
     required = {}
 
@@ -248,7 +251,7 @@ def validate(values, provenance=None, extraction=None, acknowledged=None):
 
     suggestions = {}
     if total:
-        suggestions['hardware.usable_vram_gib'] = {'value': total, 'reason': 'Default: 100% of VRAM (margin is in the estimate).'}
+        suggestions['hardware.usable_vram_gib'] = {'value': round(USABLE_FRACTION * total, 2), 'reason': 'Default: 90% of VRAM.'}
     blocked = bool(errors) or any('memory' in m['required_for'] for m in missing)
     can = {'memory': not blocked}
     can['runtime'] = can['memory'] and not any('runtime' in m['required_for'] for m in missing)

@@ -4,9 +4,8 @@ import { AdviceRec, CompareRow, ConfigBody, Extraction, HardwareOption, Json, Pr
 import { FormCtx } from './components/FieldGrid';
 import { Alert } from './components/ui';
 import { FormState, acceptPending, applyCatalogue, applyFindings, applySuggestions, dismissPending, initialForm, markReviewed, needsReview, setManual, toProvenance, toValues, visible } from './lib/form';
-import { Scenario } from './lib/scenarios';
 import { HardwarePage } from './pages/Hardware';
-import { RecommendationsPage, ScenarioState } from './pages/Recommendations';
+import { RecommendationsPage } from './pages/Recommendations';
 import { Async, ResultsPage } from './pages/Results';
 import { WorkloadPage } from './pages/Workload';
 
@@ -27,7 +26,6 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   const [mode, setMode] = useState<'prediction' | 'benchmark'>('prediction');
   const [prediction, setPrediction] = useState<Async<Prediction>>({ status: 'idle' }); const [originalPrediction, setOriginalPrediction] = useState<Prediction | null>(null);
   const [compare, setCompare] = useState<Async<{ rows: CompareRow[]; note: string }>>({ status: 'idle' });
-  const [scen, setScen] = useState<Record<string, ScenarioState>>({});
   const values = useMemo(() => toValues(form), [form]);
   const body = useCallback((): ConfigBody => ({ values: toValues(form), provenance: toProvenance(form), metadata: { acknowledged_conflicts: acknowledged } }), [form, acknowledged]);
   const labels = useMemo(() => Object.fromEntries(schema.fields.map((f) => [f.key, f.label])), [schema]);
@@ -66,7 +64,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   async function reset(): Promise<void> {
     if (analysisId) { try { await api.resetAnalysis(analysisId); } catch { /* expiry sweeping is the backstop */ } }
     setForm(initialForm(schema)); setValidation(null); setExtraction(null); setKept([]); setSkipped([]); setAcknowledged([]); setPrediction({ status: 'idle' }); setOriginalPrediction(null); setCompare({ status: 'idle' });
-    setScen({}); setStep('workload'); setMode('prediction'); setAnalysisId('');
+    setStep('workload'); setMode('prediction'); setAnalysisId('');
     setNonce((n) => n + 1);
   }
 
@@ -98,7 +96,9 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
         let next = { ...f };
         for (const k of CATALOGUE_KEYS) if (next[k]?.source === 'catalogue') delete next[k];
         next = setManual(next, 'hardware.source', r.values['hardware.source'] as Json); next = setManual(next, 'hardware.gpu_id', o.id);
-        const fill = Object.fromEntries(Object.entries(r.values).filter(([k, v]) => !['hardware.source', 'hardware.gpu_id'].includes(k) && v !== null));
+        // Usable VRAM is left to the 90% default so it follows edits to total VRAM until you change it yourself.
+        const fill = Object.fromEntries(Object.entries(r.values).filter(([k, v]) => !['hardware.source', 'hardware.gpu_id', 'hardware.usable_vram_gib'].includes(k) && v !== null));
+        if (next['hardware.usable_vram_gib']?.source !== 'manual') delete next['hardware.usable_vram_gib'];
         const applied = applyCatalogue(next, fill, o.label);
         if (applied.conflicts.length) setKept((c) => [...new Set([...c, ...applied.conflicts])]);
         return applied.form;
@@ -117,7 +117,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   }
 
   async function runPrediction(override?: Record<string, Json>): Promise<void> {
-    go('results'); setMode('prediction'); setPrediction({ status: 'loading' }); setCompare({ status: 'idle' }); setScen({});
+    go('results'); setMode('prediction'); setPrediction({ status: 'loading' }); setCompare({ status: 'idle' });
     try {
       const data = await api.predict(analysisId, override ? { ...body(), values: override } : body());
       setPrediction({ status: 'ok', data }); if (data.snapshots?.is_original_run) setOriginalPrediction(data);
@@ -135,18 +135,6 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
     setCompare({ status: 'loading' });
     try { setCompare({ status: 'ok', data: await api.compare(analysisId, body()) }); } catch (e) { setCompare({ status: 'error', error: message(e) }); }
   }
-  async function recalc(sc: Scenario): Promise<void> {
-    const changed = sc.change(values); if (!changed) return;
-    setScen((p) => ({ ...p, [sc.id]: { status: 'loading' } }));
-    try { const result = await api.predict(analysisId, { ...body(), values: changed }, false); setScen((p) => ({ ...p, [sc.id]: { status: 'done', result } })); }
-    catch (e) { setScen((p) => ({ ...p, [sc.id]: { status: 'error', error: message(e) } })); }
-  }
-  function applyScenario(sc: Scenario): void {
-    const changed = sc.change(values); if (!changed) return;
-    setForm((f) => { let next = f; for (const [k, v] of Object.entries(changed)) if (JSON.stringify(v) !== JSON.stringify(values[k])) next = setManual(next, k, v); return next; });
-    go('hardware');
-  }
-
   const ctx: FormCtx = { schema, form, values, validation,
     setField: (k, v) => setForm((f) => setManual(f, k, v)), accept: (k) => setForm((f) => acceptPending(f, k)), dismiss: (k) => setForm((f) => dismissPending(f, k)) };
   const visibleKeys = schema.fields.filter((f) => visible(f.key, values)).map((f) => f.key);
@@ -176,8 +164,7 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
       {step === 'hardware' && <HardwarePage ctx={ctx} onSelect={selectHardware} onCustom={customHardware} onBack={() => go('workload')} onRun={() => void runPrediction()} busy={prediction.status === 'loading'} blockers={allBlockers} />}
       {step === 'results' && <ResultsPage mode={mode} setMode={setMode} prediction={prediction} analysisId={analysisId} labels={labels} compare={compare} onCompare={() => void runCompare()} onGoField={goField}
         onEdit={() => go('workload')} onRecs={() => go('recs')} body={body} onGoHardware={() => go('hardware')} />}
-      {step === 'recs' && <RecommendationsPage analysisId={analysisId} body={body} values={values} labels={labels} baseline={prediction.data ?? null} original={originalPrediction}
-        states={scen} onRun={(s) => void recalc(s)} onApply={applyScenario} onApplyAdvice={applyAdvice} onBack={() => go('results')} />}
+      {step === 'recs' && <RecommendationsPage analysisId={analysisId} body={body} values={values} labels={labels} baseline={prediction.data ?? null} original={originalPrediction} onApplyAdvice={applyAdvice} onBack={() => go('results')} />}
     </>}
   </main>;
 }
@@ -197,7 +184,7 @@ function LandingNav({ onStart }: { onStart: () => void }): JSX.Element { return 
 function HowItWorks({ onStart }: { onStart: () => void }): JSX.Element {
   const items = [{ n: '01', title: 'Describe your GPT-2 run', body: 'Pick a GPT-2 checkpoint from Hugging Face or drop your config/scripts (or a ZIP). Files are parsed statically and never executed.', tag: 'config.json · training_args · train.py' },
     { n: '02', title: 'Choose your hardware', body: 'Search Nebius GPUs with VRAM and price per GPU-hour, or enter your own machine.', tag: 'GPU · VRAM · $/GPU-hr' },
-    { n: '03', title: 'See the fit, then optimize', body: 'Get peak VRAM against your usable limit, runtime scenarios and cost, then benchmark locally to confirm.', tag: 'Fits · Tight · Exceeds' }];
+    { n: '03', title: 'See the fit, then optimize', body: 'Get peak VRAM against your usable limit, runtime and cost, then benchmark locally to confirm.', tag: 'Fits · Tight · Exceeds' }];
   return <main className="bg-black px-6 pb-24 pt-20 sm:px-10 lg:px-16"><div className="mx-auto max-w-[1180px]"><p className="eyebrow text-[#8e7cea]">HOW IT WORKS</p><h2 className="mt-3 max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">Three steps from model to <span className="text-[#8e7cea]">compute plan</span></h2>
     <div className="mt-10 grid gap-4 md:grid-cols-3">{items.map((i) => <article key={i.n} className="border border-white/15 bg-white/[0.03] p-6"><span className="text-xs font-bold text-[#8e7cea]">{i.n}</span><h3 className="mt-4 text-lg font-semibold">{i.title}</h3><p className="mt-3 text-sm leading-6 text-[#bdb7cc]">{i.body}</p><p className="mt-5 inline-block border border-white/20 px-2 py-1 font-mono text-[11px] text-[#a7a0bb]">{i.tag}</p></article>)}</div>
     <div className="mt-10 border border-white/15 p-6" aria-label="Example result, illustrative"><p className="eyebrow">EXAMPLE RESULT (ILLUSTRATIVE)</p><div className="mt-4 h-4 border border-white/20"><div className="h-full w-[62%] bg-[#7258dd]" /></div><div className="mt-2 flex justify-between text-xs text-[#a7a0bb]"><span>Peak VRAM</span><span>Usable limit</span></div></div>

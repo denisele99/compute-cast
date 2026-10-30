@@ -60,11 +60,11 @@ execFileSync('python3', ['-c', `import zipfile,sys; z=zipfile.ZipFile(sys.argv[1
   expect(!(await continueBtn.isDisabled()), 'continue enabled after choosing hypotheticals');
   await continueBtn.click();
 
-  await page.getByRole('button', { name: 'Custom GPU' }).click();
+  await page.getByRole('radio', { name: 'Custom GPU' }).click();
   await f('hardware.gpu_name').fill('My workstation GPU');
   await f('hardware.vram_gib').fill('24');
   await page.waitForTimeout(800);
-  expect(await f('hardware.usable_vram_gib').inputValue() === '24', 'usable limit defaults to VRAM for custom GPU');
+  expect(await f('hardware.usable_vram_gib').inputValue() === '21.6', 'usable limit defaults to 90% of VRAM for custom GPU');
   await page.getByRole('button', { name: 'Run estimate' }).click();
   await page.getByText(/usable VRAM limit per GPU \(/).waitFor({ timeout: 20000 });
   const res = await page.locator('#results').innerText();
