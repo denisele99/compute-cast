@@ -61,6 +61,7 @@ class Strategy(Strict):
 class Suggestion(Strict):
     id: str = Field(min_length=1, max_length=40)
     title: str = Field(min_length=1, max_length=160)
+    summary: str = Field(default='', max_length=200)                  # one plain sentence shown on the collapsed card
     category: Literal[CATEGORIES]  # type: ignore[valid-type]
     explanation: str = Field(max_length=2000)
     parameter_changes: dict[str, int] = Field(default_factory=dict)   # form keys from ESTIMABLE_KEYS
@@ -75,7 +76,7 @@ class Suggestion(Strict):
 
 class Advice(Strict):
     original_summary: str = Field(max_length=2000)      # the user's current model/training strategy and estimates
-    suggestions_summary: str = Field(max_length=2000)   # the suggested changes, in short
+    suggestions_summary: str = Field(default='', max_length=2000)  # optional; not shown in the UI
     recommendations: list[Suggestion] = Field(max_length=8)
     changed_files: list[FileChange] = Field(max_length=8)
     assumptions: list[str]
@@ -126,8 +127,14 @@ Produce the best changes for the user's goal given the hardware:
 * Never invent measurements or speedups; cite the supplied estimate numbers as evidence.
 * changed_files: full contents of only the supplied files you change to implement your suggestions
   (action "modify"), or new small config files (action "create"). No placeholders or ellipses.
-* original_summary: 2-4 sentences on the current model, training strategy and its estimates.
-* suggestions_summary: 2-4 sentences on what to change and why.
+* Return 3-6 recommendations when possible, ordered by impact on the goal. Prefer independent changes the user
+  can combine (e.g. one batch/accumulation change plus checkpointing plus a hardware switch); do not repeat
+  the same change in several recommendations.
+* Be concise. title: at most 8 words. summary: ONE plain sentence (max 20 words) saying what changes and the
+  expected effect, e.g. "Halve the microbatch and double accumulation: about 40% less memory, same batch."
+  explanation: at most 3 short sentences. expected_effect: one short phrase. tradeoffs: short phrases.
+* original_summary: ONE sentence (max 25 words) on the current model, batch and fit/time/cost.
+* suggestions_summary: leave empty.
 Return ONLY one JSON object matching the JSON schema below. No markdown fences.'''
 
 

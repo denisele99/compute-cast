@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Cpu, Gauge, Layers, Menu, RotateCcw, Sparkles, type LucideIcon } from 'lucide-react';
-import { AdviceRec, CompareRow, ConfigBody, Extraction, HardwareOption, Json, Prediction, Schema, UploadResponse, UploadedFile, Validation, api } from './api';
+import { ArrowRight, Check, Cpu, Gauge, Layers, Menu, RotateCcw, Sparkles, type LucideIcon } from 'lucide-react';
+import { AdviceRec, CompareRow, ConfigBody, Extraction, HardwareOption, Json, Prediction, Schema, UploadResponse, UploadedFile, Validation, Values, api } from './api';
 import { FormCtx } from './components/FieldGrid';
-import { Alert } from './components/ui';
+import { Alert, PageHeading } from './components/ui';
 import { FormState, acceptPending, applyCatalogue, applyFindings, applySuggestions, dismissPending, initialForm, markReviewed, needsReview, setManual, toProvenance, toValues, visible } from './lib/form';
 import { HardwarePage } from './pages/Hardware';
 import { RecommendationsPage } from './pages/Recommendations';
@@ -12,6 +12,11 @@ import { WorkloadPage } from './pages/Workload';
 type Step = 'workload' | 'hardware' | 'results' | 'recs';
 const stepLabels: [Step, string, LucideIcon, string][] = [['workload', 'Workload', Layers, 'Model, data and training settings'], ['hardware', 'Hardware', Cpu, 'The GPU you plan to train on'],
   ['results', 'Results', Gauge, 'Estimate, then benchmark'], ['recs', 'Recommendations', Sparkles, 'Make it faster or cheaper']];
+const STEP_HEADINGS: Record<Exclude<Step, 'recs'>, { eyebrow: string; title: string; subtitle: string }> = {
+  workload: { eyebrow: 'Workload', title: 'Describe your training job', subtitle: 'Pick a model or upload your files, then check the settings we found.' },
+  hardware: { eyebrow: 'Hardware', title: 'Choose your GPU', subtitle: 'Pick a GPU to fill in its specs. Every value stays editable.' },
+  results: { eyebrow: 'Results', title: 'Will it fit, and what will it cost?', subtitle: 'An instant estimate, which you can confirm with a real benchmark.' },
+};
 const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 const CATALOGUE_KEYS = ['hardware.gpu_name', 'hardware.catalog_gpu_id', 'hardware.vram_gib', 'hardware.usable_vram_gib', 'hardware.bf16_supported', 'hardware.bf16_dense_tflops',
   'hardware.fp32_tflops', 'hardware.memory_bandwidth_gbps', 'hardware.price_per_hour', 'hardware.price_unit', 'hardware.price_region', 'hardware.price_note'];
@@ -124,10 +129,11 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
     } catch (e) { setPrediction({ status: 'error', error: message(e) }); }
   }
   /** Apply an AI suggestion: update the form, save the values with the analysis (original kept), re-estimate. */
-  async function applyAdvice(rec: AdviceRec): Promise<void> {
-    const merged = { ...values, ...rec.new_values };
-    setForm((f) => { let next = f; for (const [k, v] of Object.entries(rec.new_values)) if (JSON.stringify(v) !== JSON.stringify(values[k])) next = setManual(next, k, v as Json); return next; });
-    await api.adviceApply(analysisId, [rec.id], merged);
+  async function applyAdvice(recs: AdviceRec[]): Promise<void> {
+    const changes: Values = Object.assign({}, ...recs.map((r) => r.new_values));
+    const merged = { ...values, ...changes };
+    setForm((f) => { let next = f; for (const [k, v] of Object.entries(changes)) if (JSON.stringify(v) !== JSON.stringify(values[k])) next = setManual(next, k, v as Json); return next; });
+    await api.adviceApply(analysisId, recs.map((r) => r.id), merged);
     await runPrediction(merged);
   }
   async function runCompare(): Promise<void> {
@@ -149,22 +155,24 @@ function Planner({ schema }: { schema: Schema }): JSX.Element {
   const reached = (s: Step) => s === 'workload' || s === 'hardware' || prediction.status !== 'idle';
 
   return <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div className="max-w-3xl"><h1 className="text-3xl font-semibold tracking-tight">Plan your training run</h1>
-      <p className="mt-2 text-sm leading-6 text-[#d8d3e3]">Find out whether a GPT-2 training job fits on a GPU, how long it will take and what it will cost, before you rent anything.
-        Describe your workload, pick a GPU, and get an instant estimate. Then confirm it with a real benchmark and get suggestions to make the run faster, cheaper or smaller.</p>
-      <p className="mt-1.5 text-[11px] text-[#8e899b]">MVP: standard GPT-2 · PyTorch · analytical estimates · uploads are parsed statically, never executed.</p></div>
-      <button type="button" onClick={() => void reset()} className="flex items-center gap-1.5 border border-line px-2.5 py-1.5 text-xs"><RotateCcw size={12} /> New analysis (clears uploads)</button></div>
+    <div className="flex flex-wrap items-end justify-between gap-3 pt-4"><div className="max-w-3xl"><p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a48fff]">Resource estimator</p>
+      <h1 className="mt-2 text-4xl font-light tracking-tight">Plan your training run</h1>
+      <p className="mt-2 text-sm leading-6 text-[#a7a0bb]">Estimate memory, training time and cloud cost for a GPT-2 run before you rent GPUs, confirm it with a real benchmark, then get changes that make it faster or cheaper.</p>
+      <p className="mt-1.5 text-[11px] text-[#6e6b7d]">MVP: standard GPT-2 · PyTorch · analytical estimates · uploads are parsed statically, never executed.</p></div>
+      <button type="button" onClick={() => void reset()} className="flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.03] px-3 py-2 text-xs transition hover:border-white/40"><RotateCcw size={13} /> New analysis</button></div>
     {sessionError && <div className="mt-3"><Alert kind="error">{sessionError}</Alert></div>}
-    <nav aria-label="Steps" className="my-5"><ol className="grid grid-cols-2 gap-2 sm:grid-cols-4">{stepLabels.map(([id, label, Icon, hint], i) => {
-      const at = stepLabels.findIndex(([s]) => s === step); const done = i < at;
-      return <li key={id}><button disabled={!reached(id)} aria-current={step === id ? 'step' : undefined} onClick={() => go(id)}
-        className={`group w-full border-t-2 pt-2 text-left transition disabled:opacity-40 ${step === id ? 'border-violet' : done ? 'border-[#5d4cb0]' : 'border-line'}`}>
-        <span className={`flex items-center gap-1.5 text-sm font-semibold ${step === id ? 'text-white' : 'text-[#c4bfcd] group-hover:text-white'}`}>
-          <span className={`grid h-6 w-6 place-items-center ${step === id ? 'bg-violet text-white' : done ? 'bg-[#2c2550] text-[#c9bcff]' : 'border border-line text-[#8e899b]'}`} aria-hidden><Icon size={13} /></span>
-          {label}</span>
-        <span className="mt-0.5 hidden text-[11px] text-[#8e899b] sm:block">{hint}</span></button></li>;
+    <nav aria-label="Steps" className="my-8"><ol className="flex items-center">{stepLabels.map(([id, label, Icon, hint], i) => {
+      const at = stepLabels.findIndex(([s]) => s === step); const done = i < at; const here = step === id;
+      return <li key={id} className={`flex items-center ${i < stepLabels.length - 1 ? 'flex-1' : ''}`}>
+        <button disabled={!reached(id)} aria-current={here ? 'step' : undefined} onClick={() => go(id)} title={hint}
+          className="group flex shrink-0 items-center gap-2.5 text-left transition disabled:opacity-40">
+          <span className={`grid h-8 w-8 place-items-center rounded-full border transition ${here ? 'border-violet bg-violet text-white shadow-[0_0_0_4px_rgba(146,117,255,0.18)]' : done ? 'border-violet/50 bg-violet/10 text-[#c9bcff]' : 'border-white/15 text-[#8e899b]'}`} aria-hidden>
+            {done ? <Check size={14} /> : <Icon size={14} />}</span>
+          <span className={`hidden text-xs font-medium uppercase tracking-[0.12em] sm:inline ${here ? 'text-white' : 'text-[#a7a0bb] group-hover:text-white'}`}>{label}</span></button>
+        {i < stepLabels.length - 1 && <span className={`mx-3 h-px flex-1 ${done ? 'bg-violet/50' : 'bg-white/10'}`} aria-hidden />}</li>;
     })}</ol></nav>
     {!analysisId ? <p className="text-sm text-[#a7a0bb]">Starting analysis…</p> : <div key={step} className="step-enter">
+      {step !== 'recs' && <PageHeading {...STEP_HEADINGS[step]} />}
       {step === 'workload' && <WorkloadPage ctx={ctx} reviewKeys={reviewKeys} onReviewAll={() => setForm((f) => markReviewed(f, reviewKeys))} blockers={workloadBlockers} onNext={() => go('hardware')}
         acknowledged={acknowledged} onToggleConflict={(id) => setAcknowledged((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))}
         handlers={{ busy: uploadBusy, error: uploadError, extraction, kept, skipped, onUpload, onRemove: (f) => void onRemove(f), onHf, onExample }} />}
