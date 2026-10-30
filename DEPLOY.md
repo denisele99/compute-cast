@@ -25,8 +25,9 @@ on GitHub).
 3. Render asks for the secret values. Fill in what you have; you can add the rest later under the
    service's **Environment** tab.
    - `NEBIUS_API_KEY`: your Token Factory key (turns on Recommendations).
-   - `BENCH_DEMO_PASSWORD`: anything for now (cloud benchmarks stay off on the free plan).
-   - The `NEBIUS_*` benchmark values: can stay empty on the free plan.
+   - `BENCH_DEMO_PASSWORD`: a password people type in the app to start cloud benchmarks. Use a long one.
+   - The `NEBIUS_*` benchmark values: needed for cloud benchmarks (see BENCHMARK.md). Also add the
+     `credentials.json` Secret File under **Environment**, then **Secret Files**.
 4. Click **Apply**. The first build takes a few minutes.
 5. Open `https://<your-service>.onrender.com/api/health`. It should show `{"status":"ok"}`. Copy that
    base URL (without `/api/health`); it's needed in step 2.
@@ -35,16 +36,16 @@ on GitHub).
 - **It sleeps.** After about 15 minutes without visitors the service sleeps, so the next visit waits
   about a minute while it wakes up. An analysis that was open when it went to sleep is lost; start a
   new one.
-- **No disk.** The benchmark database is lost on every restart, which would also reset the spending
-  allowances. So `BENCH_CLOUD_ENABLED` stays `0` on the free plan.
-- **What still works:** estimates, recommendations and **local benchmarks** (download the package and
-  run it on your own GPU).
-- **To run Nebius benchmarks from the hosted app later,** do one of:
+- **No disk.** The benchmark database is lost on every restart or sleep, and the app's spending allowances
+  reset with it. Cloud benchmarks are on (`BENCH_CLOUD_ENABLED=1` in `render.yaml`), so the hard spending
+  limit is your Nebius quota: keep the benchmark project's GPU quota at 1. Set `BENCH_CLOUD_ENABLED` to
+  `0` on Render to switch cloud benchmarks off.
+- **Nebius settings are required.** Cloud benchmarks only start once the `NEBIUS_*` values and the
+  `credentials.json` Secret File are set on Render; until then the Nebius tab lists what is missing.
+- **For allowances that survive restarts,** either:
   - upgrade to a paid plan and add a disk (mount it at `/var/data` and set
-    `BENCH_DATABASE_URL=sqlite:////var/data/bench.sqlite3`);
+    `BENCH_DATABASE_URL=sqlite:////var/data/bench.sqlite3`); or
   - set `BENCH_DATABASE_URL` to an external Postgres database.
-
-  Then set `BENCH_CLOUD_ENABLED=1`.
 
 ## 2. Website on GitHub Pages (free for public repos)
 

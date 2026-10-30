@@ -16,12 +16,13 @@ services:
         value: 3.12.7
       - key: CORS_ALLOWED_ORIGINS
         value: https://denisele99.github.io
-      # Free plan: no persistent disk, so this database is wiped on every restart or deploy. That would reset
-      # benchmark allowances, so keep cloud benchmarks off here (or point this at an external Postgres URL).
+      # Free plan: no persistent disk, so this database is wiped on every restart, sleep or deploy, and the
+      # app's benchmark allowances reset with it. Keep the Nebius GPU quota at 1 as the hard limit.
       - key: BENCH_DATABASE_URL
         value: sqlite:////tmp/bench.sqlite3
+      # Cloud benchmarks on (needs the NEBIUS_* settings and the credentials.json Secret File). Set "0" to turn off.
       - key: BENCH_CLOUD_ENABLED
-        value: "0"
+        value: "1"
       - key: BENCH_SESSION_SECRET
         generateValue: true
       - key: BENCH_DEMO_PASSWORD
