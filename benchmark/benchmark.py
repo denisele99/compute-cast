@@ -61,9 +61,13 @@ def now():
 
 
 def write_json(path, data):
-    tmp = path.with_suffix('.tmp')
-    tmp.write_text(json.dumps(data, indent=2, allow_nan=False) + '\n', encoding='utf-8')
-    os.replace(tmp, path)
+    """Write in place and fsync. No temp file + rename: on an S3 bucket mount a rename is a server-side copy
+    of whatever has been uploaded so far, which left an empty results.json in cloud runs."""
+    text = json.dumps(data, indent=2, allow_nan=False) + '\n'
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())  # forces the upload on FUSE bucket mounts before the container exits
 
 
 def detect_hardware(torch, cpu_smoke):
@@ -236,7 +240,11 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.max_seconds <= 3600:
         parser.error('--max-seconds must be between 1 and 3600.')
-    sys.exit(run(args))
+    code = run(args)
+    logging.shutdown()  # flush and close benchmark.log before the bucket mount is torn down
+    if hasattr(os, 'sync'):
+        os.sync()
+    sys.exit(code)
 
 
 if __name__ == '__main__':

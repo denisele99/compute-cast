@@ -196,7 +196,8 @@ class JobService:
                     **fields, 'provider_message': f'Waiting for results.json to finish uploading ({exc})'[:300]})
             self._collecting_since.pop(job['id'], None)
             return self._finish(job, 'failed', charge, error={'type': 'invalid_results', 'message':
-                                f'{exc} The file was still unreadable {RESULTS_SETTLE_SECONDS} s after the job finished.'}, **fields)
+                                f'{exc} The file was still unreadable {RESULTS_SETTLE_SECONDS} s after the job finished. '
+                                f'{self._log_note(job)}'.strip()}, **fields)
         except RS.ResultError as exc:
             return self._finish(job, 'failed', charge, error={'type': 'invalid_results', 'message': str(exc)}, **fields)
         if parsed['config_fingerprint'] and parsed['config_fingerprint'] != job['fingerprint']:
@@ -207,6 +208,20 @@ class JobService:
             state = 'timed_out' if parsed['failure']['type'] == 'timeout' else 'failed'
             error = parsed['failure']
         return self._finish(job, state, charge, error=error, results=parsed, **fields)
+
+    def _log_note(self, job):
+        """Where the results live, plus the tail of benchmark.log when it can be read (diagnostics only)."""
+        where = f"Bucket path: {self.source_path(job['id'])}/ (results.json, benchmark.log)."
+        try:
+            tail = self.result_store.fetch_log_tail(self.source_path(job['id']))
+        except Exception as exc:
+            return f'{where} benchmark.log not readable ({type(exc).__name__}).'
+        if tail is None:
+            return f'{where} benchmark.log is missing too: the runner wrote nothing to the bucket.'
+        if not tail.strip():
+            return f'{where} benchmark.log is empty too: files on the bucket mount were not flushed (runner image older than 0.1.1?).'
+        text = tail.decode('utf-8', 'replace').strip().splitlines()[-3:]
+        return f"{where} Last benchmark.log lines: {' | '.join(text)}"[:600]
 
     def _charge(self, status, now):
         """Estimated (not billed) cost from provider start/finish timestamps at the reservation rate."""

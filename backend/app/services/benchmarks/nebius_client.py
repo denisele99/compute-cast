@@ -206,6 +206,15 @@ class S3ResultStore:
         self.policy = policy
 
     def fetch_results(self, source_path):
+        data = self._get(f'{source_path}/results.json', 256 * 1024 + 1)
+        return None if data is None else unwrap_object(*data)
+
+    def fetch_log_tail(self, source_path, limit=600):
+        """Last bytes of benchmark.log (diagnostics only; shown as text, never parsed or executed)."""
+        data = self._get(f'{source_path}/benchmark.log', 64 * 1024)
+        return None if data is None else unwrap_object(*data)[-limit:]
+
+    def _get(self, key, limit):
         import boto3
         from botocore.config import Config
         from botocore.exceptions import ClientError
@@ -215,8 +224,8 @@ class S3ResultStore:
         s3 = boto3.client('s3', endpoint_url=self.policy.s3_endpoint, region_name=self.policy.s3_region, config=config,
                           aws_access_key_id=self.policy.s3_access_key_id, aws_secret_access_key=self.policy.s3_secret_access_key)
         try:
-            obj = s3.get_object(Bucket=self.policy.results_bucket_name, Key=f'{source_path}/results.json')
-            return unwrap_object(obj['Body'].read(256 * 1024 + 1), obj.get('ContentEncoding') or '')
+            obj = s3.get_object(Bucket=self.policy.results_bucket_name, Key=key)
+            return obj['Body'].read(limit), obj.get('ContentEncoding') or ''
         except ClientError as exc:
             if exc.response.get('Error', {}).get('Code') in ('NoSuchKey', '404'):
                 return None
@@ -264,10 +273,14 @@ class FakeJobsClient:
 
 class FakeResultStore:
     def __init__(self):
-        self.objects = {}
+        self.objects, self.logs = {}, {}
 
     def put(self, source_path, data):
         self.objects[source_path] = data if isinstance(data, bytes) else json.dumps(data).encode()
 
     def fetch_results(self, source_path):
         return self.objects.get(source_path)
+
+    def fetch_log_tail(self, source_path, limit=600):
+        log = self.logs.get(source_path)
+        return None if log is None else log[-limit:]

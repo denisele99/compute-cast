@@ -502,11 +502,14 @@ class JobTests(BenchApiBase):
         req = self.client_fake.requests[1]
         self.poll(job['id'])
         self.results_fake.put(req.results_source_path, b'\xff\xfe not json')
+        self.results_fake.logs[req.results_source_path] = b'... INFO building model\n... ERROR runtime_error: boom\n'
         self.assertEqual(self.poll(job['id'])['state'], 'collecting')
         self.clock.t += JOBS.RESULTS_SETTLE_SECONDS + 1
         done = self.poll(job['id'])
         self.assertEqual((done['state'], done['error']['type']), ('failed', 'invalid_results'))
         self.assertIn('UTF-8', done['error']['message'])
+        self.assertIn(f'{req.results_source_path}/', done['error']['message'])
+        self.assertIn('runtime_error: boom', done['error']['message'])
 
     def test_bucket_framing_is_unwrapped(self):
         body = json.dumps({'a': 1}).encode()
