@@ -98,7 +98,7 @@ export type StrategyProjection = { status: 'ok'; approximate: true; strategy: Ad
   percent_of_usable: number; fits: boolean; memory_gib: Record<string, number>; training_hours: number | null; cost_usd: number | null; gpu_count: number;
   efficiency: number; compute_overhead: number; global_effective_batch: number; optimizer_updates: number | null; assumptions: string[] };
 export type AdviceRec = { id: string; title: string; category: string; explanation: string; parameter_changes: Record<string, number>; hardware_option_id: string | null;
-  strategy?: AdviceStrategy | null; projection?: StrategyProjection | null; implementation_steps?: string[]; launch_snippet?: string;
+  summary?: string; strategy?: AdviceStrategy | null; projection?: StrategyProjection | null; implementation_steps?: string[]; launch_snippet?: string;
   hardware: { id: string; label: string; region: string | null; cost_usd: number | null; training_hours: number | null } | null; expected_effect: string; tradeoffs: string[];
   affected_files: string[]; issues: string[]; violations: string[]; estimable: boolean; applicable: boolean; new_values: Values; estimate_note: string | null };
 export type Advice = { model: string; original_summary: string; suggestions_summary: string; recommendations: AdviceRec[];

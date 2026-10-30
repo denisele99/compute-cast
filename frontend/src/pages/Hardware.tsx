@@ -31,7 +31,7 @@ export function HardwarePage({ ctx, onSelect, onCustom, onBack, onRun, busy, blo
   const base = [...groups.nebius, ...groups.catalog].find((o) => o.id === selected);
   const edited = SPEC_KEYS.filter((k) => ctx.form[k]?.source === 'manual').length;
   return <div className="space-y-3">
-    <Section icon={Cpu} title="Hardware" hint="Pick a GPU to fill in its specs, then change any value you like. Switch GPUs at any time, or skip the list and type your own values.">
+    <Section icon={Cpu} title="GPU" hint="Switch GPUs at any time, or skip the list and type your own values.">
       <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="GPU source">{SOURCES.map(([id, label, Icon]) =>
         <button key={id} type="button" role="radio" aria-checked={source === id} onClick={() => choose(id)}
           className={`flex items-center gap-1.5 border px-3 py-1.5 text-xs transition ${source === id ? 'border-violet bg-violet/15 text-white' : 'border-line text-[#a7a0bb] hover:text-white'}`}><Icon size={13} aria-hidden />{label}</button>)}</div>
