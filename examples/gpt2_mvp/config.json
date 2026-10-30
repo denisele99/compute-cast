@@ -1,0 +1,18 @@
+{
+  "model_type": "gpt2",
+  "architectures": [
+    "GPT2LMHeadModel"
+  ],
+  "activation_function": "gelu_new",
+  "n_layer": 12,
+  "n_embd": 768,
+  "n_head": 12,
+  "n_inner": null,
+  "vocab_size": 50257,
+  "n_positions": 1024,
+  "n_ctx": 1024,
+  "attn_pdrop": 0.1,
+  "embd_pdrop": 0.1,
+  "resid_pdrop": 0.1,
+  "layer_norm_epsilon": 1e-05
+}

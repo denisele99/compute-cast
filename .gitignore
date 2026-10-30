@@ -12,3 +12,17 @@ vitest.config.cjs.timestamp-*.mjs
 vitest.config.ts.timestamp-*.mjs
 vitest.config.mts.timestamp-*.mjs
 vitest.config.cts.timestamp-*.mjs
+__pycache__/
+*.pyc
+frontend/dist/
+*.tsbuildinfo
+
+# Benchmark mode: local databases, results and credentials
+*.sqlite3
+*.sqlite3-*
+backend/.env
+frontend/.env.local
+*credentials*.json
+results.json
+benchmark.log
+benchmark/__pycache__/

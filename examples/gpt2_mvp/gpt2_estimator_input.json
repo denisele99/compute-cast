@@ -1,0 +1,46 @@
+{
+  "model": {
+    "model_type": "gpt2",
+    "n_layer": 12,
+    "n_embd": 768,
+    "n_head": 12,
+    "n_inner": null,
+    "vocab_size": 50257,
+    "n_positions": 1024,
+    "activation_function": "gelu_new",
+    "tie_word_embeddings": true,
+    "attn_pdrop": 0.1,
+    "embd_pdrop": 0.1,
+    "resid_pdrop": 0.1
+  },
+  "training": {
+    "microbatch_size": 2,
+    "sequence_length": 512,
+    "gradient_accumulation_steps": 4,
+    "optimizer_updates": 1000
+  },
+  "hardware": {
+    "label": "ILLUSTRATIVE synthetic GPU ceilings; replace with verified GPU catalog values",
+    "bf16_supported": true,
+    "vram_gib": 24,
+    "bf16_dense_tflops": 100,
+    "fp32_tflops": 20,
+    "memory_bandwidth_gbps": 600
+  },
+  "estimator_policy": {
+    "label": "ILLUSTRATIVE uncalibrated assumptions; not measured confidence bounds",
+    "bf16_efficiency": 0.3,
+    "fp32_efficiency": 0.3,
+    "bandwidth_efficiency": 0.5,
+    "launch_overhead_us": 10,
+    "other_kernels_per_layer": 40,
+    "loss_kernels": 8,
+    "adam_kernels_per_tensor": 12,
+    "adam_flops_per_parameter": 20,
+    "adam_bytes_per_parameter": 40,
+    "loss_bytes_per_logit": 14,
+    "optimizer_scratch_copies": 2,
+    "runtime_baseline_gib": 0.5,
+    "capacity_margin_fraction": 0.15
+  }
+}

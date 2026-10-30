@@ -1,0 +1,7 @@
+# Extra dependencies for cloud benchmark mode on the deployed backend (Render).
+# Not needed for local development, the local benchmark package or the offline tests
+# (the Nebius request-construction test is skipped when `nebius` is missing).
+-r requirements.txt
+nebius==0.6.31           # official Nebius AI Cloud Python SDK (JobService)
+boto3==1.43.122          # read results.json from the Nebius Object Storage results bucket (S3 API)
+psycopg[binary]==3.2.3   # only when BENCH_DATABASE_URL is a postgresql:// URL

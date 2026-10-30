@@ -1,19 +1,16 @@
-/** Recommendation scenarios are configuration changes; the Python backend recalculates each one. */
-export type Setup = {
-  batch_size_per_gpu: number; epochs: number; gradient_accumulation_steps: number; precision: string; optimizer: string;
-  gradient_checkpointing: boolean; num_examples: number; sequence_length: number | ''; input_type: string;
-  distributed_strategy: string; seconds_per_batch: number | '';
-};
-export type Scenario = { id: string; level: 'minor' | 'moderate' | 'major'; title: string; why: string; goal: ('memory' | 'runtime' | 'cost')[]; change: (s: Setup) => Setup | null; describe: (s: Setup) => string };
+/** Recommendation scenarios are changes to canonical form values; the Python backend re-estimates each one. */
+import type { Values } from '../api';
+
+export type Scenario = { id: string; level: 'minor' | 'moderate' | 'major'; title: string; why: string; goal: ('memory' | 'runtime' | 'cost')[]; change: (v: Values) => Values | null; describe: (v: Values) => string };
+const n = (v: Values, k: string, d = 1) => (typeof v[k] === 'number' ? (v[k] as number) : d);
 
 export const scenarios: Scenario[] = [
-  { id: 'half-batch', level: 'minor', title: 'Halve the per-GPU batch size', why: 'Lowers activation memory. Raise gradient accumulation to keep the effective batch size.', goal: ['memory'],
-    change: (s) => (s.batch_size_per_gpu > 1 ? { ...s, batch_size_per_gpu: Math.floor(s.batch_size_per_gpu / 2), gradient_accumulation_steps: s.gradient_accumulation_steps * 2 } : null),
-    describe: (s) => `batch ${s.batch_size_per_gpu} → ${Math.floor(s.batch_size_per_gpu / 2)}, accumulation ${s.gradient_accumulation_steps} → ${s.gradient_accumulation_steps * 2}` },
-  { id: 'bf16', level: 'moderate', title: 'Switch to BF16 precision', why: 'Smaller activations and faster tensor-core math on supported GPUs.', goal: ['memory', 'runtime', 'cost'],
-    change: (s) => (s.precision.toLowerCase() === 'bf16' ? null : { ...s, precision: 'bf16' }), describe: (s) => `precision ${s.precision} → bf16` },
-  { id: 'checkpointing', level: 'major', title: 'Enable activation checkpointing', why: 'Trades extra compute for much lower activation memory.', goal: ['memory'],
-    change: (s) => (s.gradient_checkpointing ? null : { ...s, gradient_checkpointing: true }), describe: () => 'gradient checkpointing off → on' },
+  { id: 'half-batch', level: 'minor', title: 'Halve the microbatch size', why: 'Lowers activation, logit and loss-buffer memory. Accumulation doubles, so the effective batch is unchanged.', goal: ['memory'],
+    change: (v) => (n(v, 'training.microbatch_size') > 1 ? { ...v, 'training.microbatch_size': Math.floor(n(v, 'training.microbatch_size') / 2), 'training.gradient_accumulation_steps': n(v, 'training.gradient_accumulation_steps') * 2 } : null),
+    describe: (v) => `microbatch ${n(v, 'training.microbatch_size')} → ${Math.floor(n(v, 'training.microbatch_size') / 2)}, accumulation ${n(v, 'training.gradient_accumulation_steps')} → ${n(v, 'training.gradient_accumulation_steps') * 2}` },
+  { id: 'half-seq', level: 'major', title: 'Halve the sequence length', why: 'Attention memory and work scale with S². Changes what the model sees per example; re-tokenize the data.', goal: ['memory', 'runtime', 'cost'],
+    change: (v) => (n(v, 'data.sequence_length', 0) >= 128 ? { ...v, 'data.sequence_length': Math.floor(n(v, 'data.sequence_length') / 2) } : null),
+    describe: (v) => `sequence length ${n(v, 'data.sequence_length', 0)} → ${Math.floor(n(v, 'data.sequence_length', 0) / 2)}` },
 ];
 
 export function pickScenarios(goal: 'memory' | 'runtime' | 'cost' | 'balanced'): Scenario[] {

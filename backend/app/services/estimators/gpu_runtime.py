@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""GPU training-runtime planner for collect_workload JSON (Python 3.10+, stdlib).
+"""LEGACY - NOT USED BY THE GPT-2 MVP. Retained for future profiles/extensions; not imported by
+active routes. Active MVP path: app/parsers/gpt2_inputs.py, app/parsers/gpt2_extract.py,
+app/services/estimators/estimate_gpt2.py and gpt2_predict.py. Still covered by tests.
+
+Roofline runtime estimator for the MLP / classic-transformer profiles.
+
+GPU training-runtime planner for collect_workload JSON (Python 3.10+, stdlib).
 
   python estimate_gpu_runtime.py --workload workload.json --dataset dataset.json \
       --hardware hardware.json --gpu-id nvidia_a100_80gb_pcie --output runtime.json

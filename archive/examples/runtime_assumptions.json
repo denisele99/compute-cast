@@ -1,6 +1,0 @@
-{
-  "runtime_model": "auto",
-  "assume_data_ready": false,
-  "preprocessing_seconds_per_microbatch": 0,
-  "startup_seconds": 0
-}

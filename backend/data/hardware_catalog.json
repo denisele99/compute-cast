@@ -1,4 +1,3 @@
-
 {
   "schema_version": 1,
   "gpus": {
@@ -7,50 +6,115 @@
       "manufacturer": "NVIDIA",
       "architecture": "Ada Lovelace",
       "form_factor": "PCIe",
-
       "memory": {
         "advertised_capacity_gb": 24,
         "type": "GDDR6X",
         "bandwidth_gb_per_second": 1008
       },
-
       "peak_compute_tflops": {
         "fp32": 82.6,
         "fp16_tensor_dense": null,
         "bf16_tensor_dense": null,
         "tf32_tensor_dense": null
       },
-
       "source": {
         "url": "https://images.nvidia.com/aem-dam/Solutions/geforce/ada/nvidia-ada-gpu-architecture.pdf",
         "section": "Appendix A",
         "last_verified": "2026-10-27"
       }
     },
-
     "nvidia_a100_80gb_pcie": {
       "name": "NVIDIA A100 80GB PCIe",
       "manufacturer": "NVIDIA",
       "architecture": "Ampere",
       "form_factor": "PCIe",
-
       "memory": {
         "advertised_capacity_gb": 80,
         "type": "HBM2e",
         "bandwidth_gb_per_second": 1935
       },
-
       "peak_compute_tflops": {
         "fp32": 19.5,
         "fp16_tensor_dense": 312,
         "bf16_tensor_dense": 312,
         "tf32_tensor_dense": 156
       },
-
       "source": {
         "url": "https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf",
         "section": "Specifications",
         "last_verified": "2026-10-27"
+      }
+    },
+    "nvidia_h100_sxm_80gb": {
+      "name": "NVIDIA H100 SXM 80GB",
+      "manufacturer": "NVIDIA",
+      "architecture": "Hopper",
+      "form_factor": "SXM5",
+      "memory": {
+        "advertised_capacity_gb": 80,
+        "type": "HBM3",
+        "bandwidth_gb_per_second": 3350
+      },
+      "peak_compute_tflops": {
+        "fp32": 67,
+        "fp16_tensor_dense": 989.4,
+        "bf16_tensor_dense": 989.4,
+        "tf32_tensor_dense": 494.7
+      },
+      "source": {
+        "url": "https://www.nvidia.com/en-us/data-center/h100/",
+        "section": "Specifications",
+        "last_verified": null,
+        "review_status": "pending_review",
+        "note": "Values transcribed from NVIDIA's public datasheet (dense, i.e. without sparsity) without live re-verification; review before relying on them."
+      }
+    },
+    "nvidia_h200_sxm_141gb": {
+      "name": "NVIDIA H200 SXM 141GB",
+      "manufacturer": "NVIDIA",
+      "architecture": "Hopper",
+      "form_factor": "SXM5",
+      "memory": {
+        "advertised_capacity_gb": 141,
+        "type": "HBM3e",
+        "bandwidth_gb_per_second": 4800
+      },
+      "peak_compute_tflops": {
+        "fp32": 67,
+        "fp16_tensor_dense": 989.4,
+        "bf16_tensor_dense": 989.4,
+        "tf32_tensor_dense": 494.7
+      },
+      "source": {
+        "url": "https://www.nvidia.com/en-us/data-center/h200/",
+        "section": "Specifications",
+        "last_verified": null,
+        "review_status": "pending_review",
+        "note": "Values transcribed from NVIDIA's public datasheet (dense, i.e. without sparsity) without live re-verification; review before relying on them."
+      }
+    },
+    "nvidia_l40s_48gb": {
+      "name": "NVIDIA L40S 48GB",
+      "manufacturer": "NVIDIA",
+      "architecture": "Ada Lovelace",
+      "form_factor": "PCIe",
+      "memory": {
+        "advertised_capacity_gb": 48,
+        "type": "GDDR6",
+        "bandwidth_gb_per_second": 864
+      },
+      "peak_compute_tflops": {
+        "fp32": 91.6,
+        "fp16_tensor_dense": 362.05,
+        "bf16_tensor_dense": 362.05,
+        "tf32_tensor_dense": 183
+      },
+      "source": {
+        "url": "https://www.nvidia.com/en-us/data-center/l40s/",
+        "section": "Specifications",
+        "last_verified": null,
+        "review_status": "pending_review",
+        "note": "Values transcribed from NVIDIA's public datasheet (dense, i.e. without sparsity) without live re-verification; review before relying on them."
       }
     }
   }
