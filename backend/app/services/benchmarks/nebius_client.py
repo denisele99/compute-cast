@@ -40,6 +40,7 @@ STATE_MAP = {
     'ERROR': 'collecting', 'CANCELLING': 'cancelling', 'CANCELLED': 'cancelled', 'DELETING': 'collecting',
 }
 PROVIDER_TERMINAL = {'COMPLETED', 'FAILED', 'ERROR', 'CANCELLED'}
+CALL_LIMIT = {'timeout': 60, 'auth_timeout': 60}  # per SDK call, so a network problem fails instead of hanging
 
 
 @dataclass
@@ -143,12 +144,12 @@ class NebiusSDKClient:
         return JobServiceClient(self._sdk)
 
     def submit(self, request):
-        operation = self._service().create(build_create_request(self.policy.project_id, request)).wait()
+        operation = self._service().create(build_create_request(self.policy.project_id, request), **CALL_LIMIT).wait()
         return operation.resource_id
 
     def get(self, provider_job_id):
         from nebius.api.nebius.ai.v1 import GetJobRequest
-        job = self._service().get(GetJobRequest(id=provider_job_id)).wait()
+        job = self._service().get(GetJobRequest(id=provider_job_id), **CALL_LIMIT).wait()
         details = job.status.state_details
         return ProviderStatus(provider_job_id, job.status.state.name, (details.message or '').strip(),
                               _ts(job.status.started_at), _ts(job.status.finished_at), code=details.code or '')
@@ -157,7 +158,7 @@ class NebiusSDKClient:
         from nebius.aio.service_error import RequestError
         from nebius.api.nebius.ai.v1 import GetJobByNameRequest
         try:
-            return self._service().get_by_name(GetJobByNameRequest(parent_id=self.policy.project_id, name=name)).wait().metadata.id
+            return self._service().get_by_name(GetJobByNameRequest(parent_id=self.policy.project_id, name=name), **CALL_LIMIT).wait().metadata.id
         except RequestError as exc:
             if 'NOT_FOUND' in str(exc.status):
                 return None
@@ -165,7 +166,7 @@ class NebiusSDKClient:
 
     def cancel(self, provider_job_id):
         from nebius.api.nebius.ai.v1 import CancelJobRequest
-        self._service().cancel(CancelJobRequest(id=provider_job_id)).wait()
+        self._service().cancel(CancelJobRequest(id=provider_job_id), **CALL_LIMIT).wait()
 
 
 class S3ResultStore:
